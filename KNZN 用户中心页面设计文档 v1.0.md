@@ -2887,6 +2887,283 @@ src/
 - FR-006: 3D 车库
 - FR-005: 实时挑战系统
 
+### 3.3 "最后一公里"实施建议 (Final Polish)
+
+#### 3.3.1 新手空状态处理 ✅ 避免"幽灵城"效应
+
+**问题**: 新注册用户 (Level 1, 0 XP) 进入仪表盘时，面对空的雷达图、空的成就墙、空的好友列表，会产生迷茫感。
+
+**解决方案**: 新手引导状态
+
+```javascript
+const ONBOARDING_EMPTY_STATE = {
+  // 检测条件
+  trigger: {
+    userLevel: 1,
+    totalXP: '<= 100',
+    completedLessons: 0,
+    friendsCount: 0
+  },
+
+  // 替换空白区域的引导内容
+  newUserGuidance: {
+    id: 'onboarding_checklist',
+    title: '🚀 新手启动清单',
+    subtitle: '完成这些任务，快速上手 KNZN！',
+    
+    tasks: [
+      {
+        id: 'first_lesson',
+        label: '完成第一个关卡',
+        reward: '+50 XP',
+        status: 'pending',
+        action: 'navigate-to-skill-map',
+        icon: '📚'
+      },
+      {
+        id: 'set_avatar',
+        label: '设置个人头像',
+        reward: '+20 XP',
+        status: 'pending',
+        action: 'open-avatar-editor',
+        icon: '👤'
+      },
+      {
+        id: 'view_garage',
+        label: '查看车库预览',
+        reward: '+10 XP',
+        status: 'pending',
+        action: 'scroll-to-garage-preview',
+        icon: '🚗'
+      },
+      {
+        id: 'add_first_friend',
+        label: '添加第一个好友',
+        reward: '+30 XP',
+        status: 'pending',
+        action: 'open-friend-search',
+        icon: '👥'
+      }
+    ],
+
+    // 替换空白组件的位置
+    replaceComponents: [
+      'learning-timeline', // 用引导清单替换空的时间线
+      'achievement-showcase' // 在成就墙显示"即将解锁"预览
+    ]
+  },
+
+  // 渐进式隐藏逻辑
+  hideConditions: {
+    completedTasks: 2, // 完成 2 个任务后开始淡化引导
+    userLevel: 3,      // 达到 Level 3 后完全隐藏
+    totalXP: 500       // 或获得 500 XP 后隐藏
+  }
+}
+```
+
+#### 3.3.2 3D 车库性能优化策略 ✅ 保证"秒开"体验
+
+**问题**: 在高频访问的仪表盘直接加载 Three.js 会影响 LCP (最大内容渲染时间) 和移动端电量。
+
+**解决方案**: 分层加载策略
+
+```javascript
+const GARAGE_PERFORMANCE_STRATEGY = {
+  // 默认策略: 轻量级预览
+  defaultPreview: {
+    type: 'prerendered-sequence', // 预渲染序列帧
+    format: 'webp-with-fallback',
+    frames: 12, // 12 帧循环动画
+    fileSize: '<= 200KB',
+    
+    // 伪 3D 效果配置
+    pseudo3D: {
+      rotationFrames: ['0deg', '30deg', '60deg', '90deg'],
+      transitionDuration: '0.8s',
+      easing: 'ease-in-out'
+    },
+
+    // 零件点亮效果 (CSS + SVG)
+    partHighlight: {
+      type: 'css-glow-animation',
+      glowColor: '#00FFC2',
+      duration: '1.5s'
+    }
+  },
+
+  // 重型 3D 引擎 (按需加载)
+  full3DEngine: {
+    loadTrigger: [
+      'user-clicks-garage-preview',
+      'user-clicks-enter-garage-button',
+      'user-navigates-to-sector-04'
+    ],
+    
+    lazyLoad: {
+      library: 'three.js',
+      loadingIndicator: '🔄 正在加载 3D 车库...',
+      fallbackTimeout: 5000, // 5秒后回退到 2D
+      
+      // 渐进式加载
+      progressive: {
+        step1: 'load-basic-wireframe',
+        step2: 'load-textures',
+        step3: 'load-particle-effects'
+      }
+    }
+  },
+
+  // 性能监控
+  performanceThresholds: {
+    lowEndDevice: {
+      ram: '<= 4GB',
+      fallbackTo: 'static-svg-with-css-animation'
+    },
+    slowConnection: {
+      speed: '<= 3G',
+      fallbackTo: 'compressed-gif-animation'
+    }
+  }
+}
+```
+
+#### 3.3.3 通知中心 UI 规范 ✅ 补充遗漏组件
+
+**问题**: 文档提到了通知按钮和通知偏好，但缺少通知下拉列表的具体 UI 定义。
+
+**解决方案**: 通知中心组件规范
+
+```javascript
+const NOTIFICATION_CENTER_UI = {
+  // 顶部导航栏的通知按钮
+  notificationButton: {
+    icon: '🔔',
+    position: 'top-nav-right',
+    badge: {
+      show: 'when-unread-count > 0',
+      maxDisplay: 99,
+      color: '#FF0055',
+      animation: 'pulse-on-new-notification'
+    }
+  },
+
+  // 通知下拉面板
+  notificationDropdown: {
+    trigger: 'click-notification-button',
+    width: '360px',
+    maxHeight: '480px',
+    position: 'dropdown-right-aligned',
+
+    header: {
+      title: '通知',
+      actions: [
+        { label: '全部标记已读', action: 'mark-all-read' },
+        { label: '设置', action: 'open-notification-settings' }
+      ]
+    },
+
+    // 通知项目结构
+    notificationItem: {
+      layout: 'horizontal',
+      components: {
+        icon: {
+          size: '32px',
+          types: {
+            'friend-request': '👥',
+            'achievement-unlock': '🏆',
+            'challenge-invite': '⚡',
+            'level-up': '⬆️',
+            'system-update': '🔔'
+          }
+        },
+        
+        content: {
+          title: { fontSize: '14px', fontWeight: 'bold' },
+          message: { fontSize: '12px', color: '#999999' },
+          timestamp: { fontSize: '11px', color: '#666666' }
+        },
+        
+        actions: {
+          position: 'right',
+          buttons: [
+            { type: 'accept', style: 'primary-small' },
+            { type: 'decline', style: 'secondary-small' },
+            { type: 'view', style: 'link' }
+          ]
+        }
+      },
+
+      states: {
+        unread: {
+          background: 'rgba(0, 255, 194, 0.05)',
+          borderLeft: '3px solid #00FFC2'
+        },
+        read: {
+          background: 'transparent',
+          opacity: 0.7
+        }
+      }
+    },
+
+    // 通知分类标签
+    categories: {
+      enabled: true,
+      tabs: [
+        { id: 'all', label: '全部', count: 12 },
+        { id: 'social', label: '社交', count: 5 },
+        { id: 'achievements', label: '成就', count: 3 },
+        { id: 'system', label: '系统', count: 4 }
+      ]
+    },
+
+    // 空状态
+    emptyState: {
+      icon: '📭',
+      title: '暂无通知',
+      message: '完成更多关卡来获得成就通知吧！'
+    },
+
+    // 底部操作
+    footer: {
+      viewAllLink: {
+        label: '查看全部通知 →',
+        action: 'navigate-to-notification-history'
+      }
+    }
+  },
+
+  // 通知历史页面 (可选)
+  notificationHistory: {
+    route: '/notifications',
+    layout: 'full-page-list',
+    filters: ['all', 'unread', 'social', 'achievements', 'system'],
+    pagination: true,
+    itemsPerPage: 20
+  }
+}
+```
+
+### 3.4 开发检查清单 (Development Checklist)
+
+#### 新手体验验证
+- [ ] 新用户首次登录时显示引导清单
+- [ ] 完成引导任务后正确给予 XP 奖励
+- [ ] 引导清单在达到条件后自动隐藏
+- [ ] 空状态下各组件显示合适的占位内容
+
+#### 性能优化验证
+- [ ] 仪表盘首屏加载时间 < 2.5s
+- [ ] 车库预览使用轻量级方案 (< 200KB)
+- [ ] 3D 引擎仅在用户主动触发时加载
+- [ ] 低端设备和慢网络下有合适的降级方案
+
+#### 通知系统验证
+- [ ] 通知按钮正确显示未读数量
+- [ ] 通知下拉面板布局和交互正常
+- [ ] 不同类型通知显示正确的图标和操作
+- [ ] 通知状态 (已读/未读) 正确同步
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  导航栏: [KNZN Logo] [...导航] [设置] [通知] [用户菜单]          │
