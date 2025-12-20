@@ -986,6 +986,759 @@ const LEARNING_ANALYTICS = {
 
 ---
 
+#### FR-007: 布局与视窗管理 ✅ 智能分屏版
+
+**描述**: 定义 IDE、硬件模拟器、任务书的空间关系，支持拖拽改大小、Zen Mode、实时同步
+
+**智能分屏系统**:
+```javascript
+const SMART_SPLIT_PANES = {
+  name: 'FR-007: 布局与视窗管理',
+  description: '定义 IDE、模拟器、任务书的空间关系及实时同步',
+
+  // 默认布局
+  defaultLayout: {
+    desktop: {
+      name: 'Classic Split',
+      layout: `
+┌──────────────────────────────────────────┐
+│  Sidebar (20%)                           │
+├──────────────────────────────────────────┤
+│  Task Desc (20%) │ IDE (40%) │ Sim (40%) │
+└──────────────────────────────────────────┘
+      `,
+      components: {
+        sidebar: {
+          width: '100%',
+          height: '80px',
+          contents: ['BreadcrumbNav', 'ProgressBar', 'MetricsDisplay']
+        },
+        
+        main: {
+          display: 'flex',
+          layout: '20-40-40',
+          
+          taskPanel: {
+            width: '20%',
+            content: 'TaskDescription',
+            scrollable: true,
+            resizable: true,
+            minWidth: '250px',
+            maxWidth: '400px'
+          },
+          
+          codePanel: {
+            width: '40%',
+            content: 'CodeEditor',
+            scrollable: true,
+            resizable: true
+          },
+          
+          simulatorPanel: {
+            width: '40%',
+            content: 'HardwareSimulator',
+            scrollable: true,
+            resizable: true
+          }
+        }
+      }
+    }
+  },
+
+  // 用户自定义布局
+  customLayouts: [
+    {
+      name: 'Code-First (专注编码)',
+      description: 'IDE 占 70%，模拟器占 30%',
+      layout: '70-30',
+      icon: '💻'
+    },
+    {
+      name: 'Visual-First (关注电路)',
+      description: 'IDE 占 30%，模拟器占 70%',
+      layout: '30-70',
+      icon: '🔌'
+    },
+    {
+      name: 'Fullscreen IDE (沉浸编码)',
+      description: 'IDE 全屏，模拟器折叠为右侧小窗',
+      layout: '95-5',
+      icon: '🖥️'
+    }
+  ],
+
+  // 拖拽改大小
+  resizable: {
+    enabled: true,
+    dividers: [
+      {
+        between: 'taskPanel',
+        and: 'codePanel',
+        direction: 'vertical',
+        cursor: 'col-resize',
+        behavior: 'smooth'
+      }
+    ],
+    
+    // 记忆用户的偏好设置
+    rememberPreference: {
+      enabled: true,
+      storage: 'localStorage',
+      key: 'lesson_layout_preference',
+      resetOnNewLesson: false
+    }
+  },
+
+  // Zen Mode: 最小化干扰
+  zenMode: {
+    enabled: true,
+    trigger: 'hotkey-Z',
+    
+    effect: {
+      hide: [
+        'Sidebar',
+        'TaskDescription',
+        'PerformanceMetrics',
+        'AllButtons'
+      ],
+      
+      show: [
+        'CodeEditor',
+        'HardwareSimulator'
+      ],
+      
+      styling: {
+        background: {
+          from: 'radial-gradient(#FF00FF, #00FFFF)',  // 原始霓虹风
+          to: '#0A0E27'                                // Zen Mode: 深黑
+        },
+        
+        neonGlow: {
+          intensity: 0.2,    // 降低霓虹光效 20%
+          duration: 'instant'
+        }
+      },
+      
+      behavior: {
+        showMinimalUI: true,
+        hideAfterXSeconds: false,
+        exitWith: 'ESC key or mouse move to top'
+      }
+    }
+  }
+}
+```
+
+---
+
+#### FR-008: 智能调试与错误人性化 ✅ 步进执行版
+
+**描述**: 将晦涩的错误翻译成人类可理解的语言，并支持逐行执行和硬件时序可视化
+
+**智能错误翻译系统**:
+```javascript
+const SMART_ERROR_TRANSLATION = {
+  name: 'FR-008: 智能调试',
+  description: '将晦涩的错误翻译成可理解的人话，并提供修复建议',
+
+  // 错误类型识别
+  errorPatterns: [
+    {
+      pattern: 'NameError: name \'(\w+)\' is not defined',
+      category: 'undefined-variable',
+      
+      humanTranslation: (match) => `
+🤖 指挥官，我找不到一个叫 "${match[1]}" 的指令或变量。
+
+可能的原因：
+1. 拼写错误（例如 'GPI' 应该是 'GPIO'）
+2. 变量没有定义（你需要先赋值给它）
+3. 缺少 import（例如 'time' 需要 'import time'）
+
+建议检查：
+• 第 ${highlightedLine} 行的这个词
+• 你是否已经导入了所需的模块
+• 变量名是否一致
+      `,
+      
+      suggestions: [
+        'Check for typos in variable/function names',
+        'Make sure all modules are imported',
+        'Verify variable initialization'
+      ],
+      
+      highlightCode: true,
+      offendingLine: true
+    },
+
+    {
+      pattern: 'IndentationError: unexpected indent',
+      category: 'indentation-error',
+      
+      humanTranslation: `
+🤖 缩进错误：你的代码行缩进不对。
+
+Python 非常在意缩进！它用缩进来判断代码块的范围。
+
+规则：
+• if/for/while 后的代码需要缩进
+• 同一个块的代码缩进必须一致
+• 通常缩进 4 个空格
+      `,
+      
+      autoFix: {
+        enabled: true,
+        action: 'highlight-problematic-line',
+        offering: 'Would you like me to auto-fix the indentation?'
+      }
+    }
+  ],
+
+  // 步进执行调试
+  stepThroughDebugging: {
+    name: 'Step Debugger',
+    enabled: true,
+    
+    ui: {
+      button: {
+        label: '🐢 逐行执行',
+        position: 'code-editor-toolbar',
+        hotkey: 'F10'
+      }
+    },
+    
+    behavior: {
+      mode: 'step-execution',
+      
+      features: [
+        {
+          feature: 'line-by-line-execution',
+          effect: 'execute-one-line-at-a-time',
+          control: 'Step Over (F10) / Step Into (F11)'
+        },
+        {
+          feature: 'variable-watch',
+          effect: 'show-all-variables-and-their-values',
+          panel: 'right-sidebar',
+          updates: 'after-each-line'
+        },
+        {
+          feature: 'hardware-state-tracking',
+          effect: 'simulator-updates-in-real-time',
+          synchronization: 'instant'
+        }
+      ]
+    },
+
+    // 时序可视化
+    timingVisualization: {
+      enabled: true,
+      description: '用时间轴显示代码执行时序和硬件响应',
+      
+      visualization: {
+        type: 'timeline',
+        shows: [
+          {
+            track: 'Code Execution',
+            events: [
+              { time: 0, action: 'GPIO.setup(17, OUT)', color: '#00FFC2' },
+              { time: 0, action: 'GPIO.output(17, HIGH)', color: '#00FFC2' },
+              { time: 1000, action: 'time.sleep(1)', color: '#FFD700' },
+              { time: 2000, action: 'GPIO.output(17, LOW)', color: '#FF6B35' }
+            ]
+          },
+          {
+            track: 'Hardware State',
+            events: [
+              { time: 0, state: 'GPIO 17 → HIGH', color: '#33FF00' },
+              { time: 1000, state: 'LED ON', color: '#33FF00' },
+              { time: 2000, state: 'LED OFF', color: '#666666' }
+            ]
+          }
+        ],
+        
+        alignment: 'synchronized',
+        synchronizationLatency: '< 50ms'
+      }
+    }
+  }
+}
+```
+
+---
+
+#### FR-009: 移动端适配 ✅ 渐进式降级版
+
+**描述**: 针对移动端的特殊适配，包括强制桌面端、伴侣模式、渐进式降级三种方案
+
+**移动端策略**:
+```javascript
+const MOBILE_STRATEGY = {
+  // 方案 A: 强制桌面端（激进但明确）
+  restrictedPhasesOnMobile: {
+    phase_1_theory: {
+      enabled: true,
+      reason: '仅限视频和选择题'
+    },
+    
+    phase_2_practical: {
+      enabled: false,
+      recommendation: '建议在 PC 端进行以获得最佳体验',
+      fallbackUI: {
+        type: 'device-upgrade-prompt',
+        message: '⚠️ Phase 2 (实践) 需要在桌面端完成。代码编辑和电路设计在手机上体验不佳。',
+        cta: [
+          {
+            label: '在 PC 浏览器打开',
+            action: 'open-on-desktop'
+          },
+          {
+            label: '继续观看教学视频',
+            action: 'stay-on-phase-1'
+          }
+        ]
+      }
+    }
+  },
+
+  // 方案 B: 伴侣模式（双屏协作）
+  companionMode: {
+    name: '伴侣模式',
+    description: '手机作为第二屏幕，展示任务书和原理图',
+    enabled: true,
+    
+    // 主屏幕 (PC/Tablet)
+    primaryScreen: {
+      displays: ['IDE', 'HardwareSimulator'],
+      layout: '50-50-split',
+      focusAreas: ['code-editing', 'circuit-visualization']
+    },
+
+    // 伴侣屏幕 (手机)
+    companionScreen: {
+      displays: ['TaskDescription', 'CircuitDiagram', 'Hints'],
+      layout: 'vertical-stack',
+      
+      features: {
+        liveSyncWithPrimary: {
+          enabled: true,
+          syncEvents: [
+            'code-execution-started',
+            'circuit-validation-result',
+            'hint-requested'
+          ],
+          protocol: 'WebSocket',
+          latency: '< 100ms'
+        },
+        
+        quickActionsBar: {
+          buttons: [
+            {
+              id: 'run-code',
+              label: '▶ 运行',
+              sendsToPC: true
+            },
+            {
+              id: 'hint',
+              label: '💡 提示',
+              sendsToPC: true
+            }
+          ]
+        }
+      }
+    },
+
+    // 配对机制
+    pairing: {
+      method: 'qr-code',
+      flow: `
+1. 用户在 PC 开启 Phase 2
+2. PC 屏幕右下角出现 "伴侣模式" 按钮
+3. 点击后生成 QR 码
+4. 用手机扫描 QR 码，自动连接
+5. 手机显示任务书和原理图，PC 全屏 IDE
+      `,
+      pairing_timeout: 300000,  // 5 分钟超时
+      security: 'session-based'
+    }
+  },
+
+  // 方案 C: 渐进式降级（最实用）
+  progressiveDegradation: {
+    mobile_portrait: {
+      layouts: [
+        {
+          priority: 1,
+          component: 'TaskDescription',
+          height: '25%',
+          scrollable: true
+        },
+        {
+          priority: 2,
+          component: 'CodeEditor',
+          height: '50%',
+          scrollable: true,
+          expandable: true
+        },
+        {
+          priority: 3,
+          component: 'HardwareSimulator',
+          height: '25%',
+          scrollable: true,
+          collapsible: true
+        }
+      ],
+      
+      // 自适应编辑器
+      codeEditor: {
+        fontSize: '12px',
+        height: 'auto',
+        minLines: 10,
+        maxLines: 20,
+        
+        mobileOptimizations: {
+          fullscreenEditMode: {
+            enabled: true,
+            gesture: 'swipe-up',
+            hidesTaskDescription: true,
+            hidesSimulator: true
+          },
+          
+          codeTemplateSnippets: {
+            enabled: true,
+            snippets: [
+              { label: 'GPIO 设置', code: 'GPIO.setup(17, GPIO.OUT)' },
+              { label: 'LED 亮', code: 'GPIO.output(17, GPIO.HIGH)' },
+              { label: 'LED 灭', code: 'GPIO.output(17, GPIO.LOW)' }
+            ],
+            tapToInsert: true
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+---
+
+#### FR-010: 状态持久化与防挫败机制 ✅ 多层备份版
+
+**描述**: 自动快照系统，防止用户因页面刷新、网络断开等原因丢失进度
+
+**自动快照系统**:
+```javascript
+const AUTO_SNAPSHOT_SYSTEM = {
+  enabled: true,
+  
+  // 快照触发条件
+  triggers: [
+    {
+      event: 'code-change',
+      debounceMs: 1000,
+      condition: 'codeLength > 50 characters'
+    },
+    {
+      event: 'circuit-change',
+      immediatelyAfter: 'breadboard-connection',
+      debounceMs: 500
+    },
+    {
+      event: 'time-based',
+      interval: 30000         // 每 30 秒自动保存
+    },
+    {
+      event: 'before-navigation',
+      when: 'user-tries-to-leave-with-unsaved-changes'
+    }
+  ],
+
+  // 存储策略（多层备份）
+  storageStrategy: {
+    layer1: {
+      name: 'IndexedDB (本地浏览器)',
+      capacity: '50MB',
+      persistence: 'browser-session + local-storage',
+      latency: '< 10ms',
+      reliability: 'medium'
+    },
+    
+    layer2: {
+      name: '后端数据库',
+      capacity: 'unlimited',
+      persistence: 'permanent',
+      latency: '200-500ms',
+      reliability: 'high',
+      
+      validationRules: [
+        'code-length > 20 characters',
+        'circuit-is-valid',
+        'no-syntax-errors'
+      ]
+    },
+    
+    syncStrategy: {
+      method: 'optimistic-update',
+      flow: `
+1. 用户修改代码 → 立即保存到 IndexedDB
+2. 同时异步上传到后端
+3. 后端返回确认 → 标记为 "已备份"
+4. 如果上传失败 → 重试（指数退避）
+5. 如果 30 秒后仍未成功 → 离线警告 ⚠️
+      `
+    }
+  },
+
+  // 恢复机制
+  recovery: {
+    onPageReload: {
+      detection: 'page-refresh-or-crash',
+      flow: `
+1. 页面加载时检查 IndexedDB
+2. 找到最新快照 → 自动恢复
+3. 弹出通知: "你的代码已恢复。上次保存于 2 分钟前。"
+4. 显示 [还原] [放弃] 按钮
+5. 自动选择还原，30 秒后自动确认
+      `,
+      ui: {
+        type: 'notification-bar',
+        position: 'top',
+        background: '#FFD700',
+        icon: '💾',
+        message: '✅ 你的代码已自动恢复',
+        buttons: [
+          {
+            label: '查看还原的代码',
+            action: 'scroll-to-editor'
+          }
+        ]
+      }
+    },
+
+    onNetworkDisconnect: {
+      detection: 'navigator.onLine === false',
+      behavior: {
+        workOffline: true,
+        UI: '⚠️ 网络已断开。你的更改仍在本地保存。',
+        syncWhenOnline: true
+      }
+    }
+  },
+
+  // 版本历史
+  versionHistory: {
+    enabled: true,
+    maxSnapshots: 20,
+    
+    ui: {
+      timeline: {
+        type: 'horizontal-timeline',
+        position: 'bottom-of-editor',
+        label: '🕐 历史版本',
+        maxDisplay: 5,
+        expandable: true
+      },
+      
+      restore: {
+        action: 'click-snapshot',
+        confirmation: '这会覆盖当前代码，确定吗？',
+        buttons: ['还原', '取消']
+      }
+    }
+  },
+
+  // 防挫败机制
+  antiFrustration: {
+    confirmBeforeLeave: {
+      enabled: true,
+      triggerConditions: [
+        'unsaved-code-changes',
+        'incomplete-circuit',
+        'unfinished-challenge'
+      ],
+      
+      ui: {
+        type: 'modal',
+        title: '⚠️ 你有未保存的更改',
+        message: '如果离开，你的代码会丢失。确定要离开吗？',
+        buttons: [
+          { label: '继续编辑', action: 'cancel', style: 'primary' },
+          { label: '保存并离开', action: 'save-and-leave' },
+          { label: '放弃更改离开', action: 'leave-without-saving', style: 'danger' }
+        ]
+      }
+    },
+
+    backButtonBehavior: {
+      enabled: true,
+      intercept: 'browser-back-button',
+      flow: `
+1. 用户点击浏览器的 [<] 返回键
+2. 如果有未保存的更改 → 拦截，显示确认对话框
+3. 否则正常返回到技能地图
+      `
+    }
+  }
+}
+```
+
+---
+
+#### FR-011: Loot 系统与 Sector 04 连接 ✅ 商业闭环版
+
+**描述**: 完成关卡时获得虚拟硬件模块，积累到 Sector 04 用于实物制造项目
+
+**掉落物与库存系统**:
+```javascript
+const SECTOR_04_LOOT_SYSTEM = {
+  name: '掉落物与库存系统',
+  description: '完成关卡时获得虚拟硬件模块，积累到 Sector 04',
+
+  // 每个关卡的掉落物定义
+  lessonLootTable: {
+    'lesson_gpio_basics': {
+      title: 'GPIO 基础入门',
+      lootDrops: [
+        {
+          id: 'gpio-control-module',
+          name: '🔌 GPIO 控制单元',
+          description: '能够读写通用输入输出信号',
+          rarity: 'common',
+          icon: '/assets/loot/gpio-module.png',
+          
+          // 此模块用于 Sector 04 的什么项目
+          usedInSector04: {
+            projects: ['赛博越野车', '家庭自动化系统'],
+            functionality: 'LED 和马达控制'
+          },
+          
+          // 获得条件
+          requirements: {
+            phase_1_completion: true,
+            phase_2_completion: true,
+            phase_3_challenge: 'any',
+            phase_4_quiz: 'score >= 60'
+          }
+        },
+        
+        {
+          id: 'timing-coordinator',
+          name: '⏱️ 时序协调器',
+          description: '精确控制事件的先后顺序和延迟',
+          rarity: 'uncommon',
+          icon: '/assets/loot/timing.png',
+          
+          requirements: {
+            phase_3_challenge: 'completed',
+            bonus: 'code_contains_sleep_function'
+          }
+        },
+        
+        {
+          id: 'persistence-badge',
+          name: '🏅 坚持勋章',
+          description: '表示你不怕犯错的精神',
+          rarity: 'uncommon',
+          icon: '/assets/loot/persistence.png',
+          
+          requirements: {
+            phase_2_or_3_attempts: '>= 3'
+          }
+        }
+      ],
+      
+      // 完成动画
+      unlockAnimation: {
+        trigger: 'phase-4-completion',
+        sequence: [
+          {
+            time: 0,
+            action: 'show-completion-modal',
+            title: '🎉 恭喜，你掌握了 GPIO 基础！'
+          },
+          {
+            time: 1500,
+            action: 'spawn-loot-drops',
+            animation: 'items-fly-into-inventory',
+            sound: 'loot-drop.mp3'
+          },
+          {
+            time: 3000,
+            action: 'show-inventory-preview',
+            content: '你的库存已更新。查看 Sector 04 查看这些模块如何用于你的越野车。'
+          },
+          {
+            time: 4000,
+            action: 'show-next-recommended-skill',
+            skill: 'PWM 脉冲宽度调制',
+            reason: '下一个关卡会教你如何用 GPIO 控制 LED 的亮度，这是越野车大灯的关键。'
+          }
+        ]
+      }
+    }
+  },
+
+  // 库存系统
+  inventory: {
+    location: '/inventory',
+    ui: {
+      layout: 'grid-view',
+      groupBy: 'rarity',
+      filters: ['all', 'common', 'uncommon', 'rare', 'epic'],
+      
+      itemCard: {
+        displays: [
+          'icon',
+          'name',
+          'rarity-color-border',
+          'description',
+          'usedIn-badge'
+        ],
+        
+        hover: {
+          shows: 'detailed-tooltip',
+          tooltip: [
+            '详细描述',
+            '用途',
+            '如何获得',
+            '解锁相关的下一个关卡推荐'
+          ]
+        }
+      }
+    }
+  },
+
+  // 与 Sector 04 的连接
+  sector04Integration: {
+    unlockCondition: 'all-modules-for-project-collected',
+    
+    projectList: [
+      {
+        projectId: 'cyber-buggy-v1',
+        name: '赛博越野车 - 基础版',
+        requiredModules: [
+          'gpio-control-module',
+          'motor-driver',
+          'power-distribution'
+        ],
+        
+        moduleStatus: {
+          'gpio-control-module': 'unlocked',    // 绿色勾
+          'motor-driver': 'locked',             // 灰化 + 需要的关卡
+          'power-distribution': 'locked'
+        },
+        
+        nextStepHint: '完成 PWM 关卡后，你将获得 [电机驱动模块]。'
+      }
+    ]
+  }
+}
+```
+
+---
+
+---
+
 ## 🎨 第二部分：设计规范 (Design Specification)
 
 ### 2.1 页面布局
@@ -1247,25 +2000,50 @@ src/
 │   ├── ProgressBar.vue           # 进度条
 │   ├── PerformanceMetrics.vue    # 性能指标显示
 │   ├── AchievementNotification.vue # 成就通知
-│   └── LeftSidebar.vue           # 左侧栏
+│   ├── LeftSidebar.vue           # 左侧栏
+│   ├── SmartSplitPanes.vue       # 智能分屏系统 (FR-007)
+│   ├── ErrorTranslator.vue       # 错误翻译器 (FR-008)
+│   ├── StepDebugger.vue          # 步进调试器 (FR-008)
+│   ├── MobileAdapter.vue         # 移动端适配器 (FR-009)
+│   ├── CompanionMode.vue         # 伴侣模式 (FR-009)
+│   ├── AutoSnapshot.vue          # 自动快照 (FR-010)
+│   ├── LootSystem.vue            # 掉落物系统 (FR-011)
+│   └── InventoryPanel.vue        # 库存面板 (FR-011)
 ├── composables/
 │   ├── useLesson.ts              # 关卡逻辑
 │   ├── useCodeExecution.ts       # 代码执行逻辑
 │   ├── useProgressTracking.ts    # 进度追踪
 │   ├── useAchievementSystem.ts   # 成就系统
-│   └── useLearningAnalytics.ts   # 学习分析
+│   ├── useLearningAnalytics.ts   # 学习分析
+│   ├── useLayoutManager.ts       # 布局管理 (FR-007)
+│   ├── useErrorTranslation.ts    # 错误翻译 (FR-008)
+│   ├── useStepDebugger.ts        # 步进调试 (FR-008)
+│   ├── useMobileDetection.ts     # 移动端检测 (FR-009)
+│   ├── useAutoSnapshot.ts        # 自动快照 (FR-010)
+│   └── useLootSystem.ts          # 掉落物系统 (FR-011)
 ├── assets/
 │   ├── videos/
 │   │   └── gpio-basics.mp4
 │   ├── audio/
 │   │   ├── success_chime.mp3
-│   │   └── error_buzz.mp3
+│   │   ├── error_buzz.mp3
+│   │   └── loot-drop.mp3         # 掉落物音效 (FR-011)
+│   ├── loot/                     # 掉落物图标 (FR-011)
+│   │   ├── gpio-module.png
+│   │   ├── timing.png
+│   │   └── persistence.png
 │   └── data/
-│       └── lessons.json          # 关卡数据
+│       ├── lessons.json          # 关卡数据
+│       ├── error-patterns.json   # 错误模式 (FR-008)
+│       └── loot-tables.json      # 掉落物表 (FR-011)
 └── utils/
     ├── codeValidator.ts          # 代码验证
     ├── testRunner.ts             # 测试运行器
-    └── analyticsTracker.ts       # 分析追踪
+    ├── analyticsTracker.ts       # 分析追踪
+    ├── errorPatternMatcher.ts    # 错误模式匹配 (FR-008)
+    ├── deviceCapabilityDetector.ts # 设备能力检测 (FR-009)
+    ├── snapshotManager.ts        # 快照管理 (FR-010)
+    └── lootCalculator.ts         # 掉落物计算 (FR-011)
 ```
 
 ---
