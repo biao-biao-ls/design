@@ -99,7 +99,7 @@ const LESSON_STRUCTURE = {
     }
   },
 
-  // 关卡包含的 3 个学习环节
+  // 关卡包含的 4 个学习环节（增加反思阶段）
   phases: [
     {
       id: 'phase_1',
@@ -190,27 +190,87 @@ led.off()
 
     {
       id: 'phase_3',
-      type: 'CHALLENGE',
-      title: '第三阶段: 创意挑战 (5 min)',
-      description: '制作一个闪烁的 SOS 信号',
+      type: 'DEBUG_MODE',
+      title: '第三阶段: 故障排查模式 (10 min)',
+      description: '修复一段有 Bug 的代码或连错的电路',
       
       content: {
-        format: 'creative-challenge',
+        format: 'debug-challenge',
         
         challenge: {
-          title: '制作一个 SOS 求救灯',
-          briefing: '用 LED 发送摩尔斯电码 SOS 信号',
+          title: '修复这个不工作的 LED 电路',
+          briefing: '电路图看起来正确，但 LED 不亮。找出问题并修复它。',
           
-          requirements: [
-            'S = 3 个短闪 (0.2秒)',
-            'O = 3 个长闪 (0.6秒)',
-            '字母间隔 0.3 秒'
+          buggyCode: `
+import machine
+import time
+
+# 设置 GPIO 17 为输入（这里是错误的）
+led = machine.Pin(17, machine.Pin.IN)
+
+# 尝试点亮 LED
+led.on()  # 这行会报错
+time.sleep(1)
+          `,
+          
+          buggyCircuit: {
+            // Wokwi 支持断路/短路模拟
+            faults: [
+              { type: 'disconnected_wire', connection: 'led1:C-r1:1' },
+              { type: 'wrong_pin_mode', pin: 17, currentMode: 'INPUT', correctMode: 'OUTPUT' }
+            ]
+          },
+          
+          hints: [
+            '检查 GPIO 引脚的配置模式',
+            '确认所有连线都正确连接',
+            '查看串口输出的错误信息'
           ],
           
           validation: {
-            type: 'pattern-matching',
-            checkPattern: 'short-short-short-long-long-long-short-short-short'
+            type: 'fix-verification',
+            checkCriteria: [
+              'gpio_pin_mode_correct',
+              'circuit_connections_valid',
+              'led_blinks_successfully'
+            ]
           }
+        }
+      }
+    },
+
+    {
+      id: 'phase_4',
+      type: 'REFLECTION',
+      title: '第四阶段: 费曼笔记 (5 min)',
+      description: '用自己的话总结本关学到的知识点',
+      
+      content: {
+        format: 'feynman-log',
+        
+        reflection: {
+          title: '请用自己的话解释今天学到的内容',
+          prompts: [
+            'GPIO 是什么？它的作用是什么？',
+            '为什么需要电阻？不加电阻会怎样？',
+            '你在调试过程中学到了什么？',
+            '如果要向朋友解释这个项目，你会怎么说？'
+          ],
+          
+          minWords: 100,
+          maxWords: 300,
+          
+          aiAssistance: {
+            enabled: true,
+            helpType: 'writing_suggestions',
+            prompt: '帮助用户组织语言，但不直接给出答案'
+          }
+        },
+        
+        completionCriteria: {
+          wordCount: 100,
+          coverKeyPoints: ['gpio_concept', 'resistor_purpose', 'debugging_process'],
+          passAIReview: true
         }
       }
     }
@@ -280,6 +340,40 @@ const WOKWI_INTEGRATION = {
     width: '100%',
     height: '600px',
     sandbox: 'allow-scripts allow-same-origin allow-forms'
+  },
+
+  // X-Ray 透视视图（原理可视化）
+  xrayVisualizer: {
+    enabled: true,
+    position: 'side-panel',
+    width: '300px',
+    
+    visualizations: [
+      {
+        trigger: 'gpio_pin_high',
+        animation: 'mos_transistor_on',
+        description: 'GPIO 拉高时，MOS 管导通，电流流向 LED',
+        svgPath: '/animations/mos-transistor-on.svg'
+      },
+      {
+        trigger: 'gpio_pin_low', 
+        animation: 'mos_transistor_off',
+        description: 'GPIO 拉低时，MOS 管截止，电流被阻断',
+        svgPath: '/animations/mos-transistor-off.svg'
+      },
+      {
+        trigger: 'current_flow',
+        animation: 'electron_flow',
+        description: '电子从负极流向正极，形成电流',
+        svgPath: '/animations/current-flow.svg'
+      }
+    ],
+    
+    controls: {
+      playPause: true,
+      speed: { min: 0.5, max: 2.0, default: 1.0 },
+      replay: true
+    }
   },
 
   // 心跳检测机制
@@ -379,7 +473,56 @@ const WOKWI_INTEGRATION = {
   },
 
   validation: {
-    method: 'serial-output-monitoring',
+    method: 'custom-chip-integration',
+    
+    customChip: {
+      // 使用 Wokwi Custom Chip API 创建虚拟逻辑分析仪
+      chipName: 'knzn-logic-analyzer',
+      implementation: `
+        // 自定义芯片：虚拟逻辑分析仪
+        class KNZNLogicAnalyzer {
+          constructor() {
+            this.samples = [];
+            this.isRecording = false;
+          }
+          
+          onPinChange(pin, value, timestamp) {
+            if (this.isRecording) {
+              this.samples.push({ pin, value, timestamp });
+              
+              // 实时判题：检查时序是否正确
+              if (this.samples.length >= 10) {
+                const pattern = this.analyzePattern();
+                if (pattern.isValid) {
+                  this.sendMessage('LEVEL_COMPLETED', pattern);
+                }
+              }
+            }
+          }
+          
+          analyzePattern() {
+            // 分析 GPIO 17 的时序模式
+            const gpio17Samples = this.samples.filter(s => s.pin === 17);
+            
+            // 检查是否符合预期的 LED 闪烁模式
+            const expectedPattern = [1, 0, 1, 0]; // 高-低-高-低
+            const actualPattern = gpio17Samples.map(s => s.value);
+            
+            return {
+              isValid: this.arraysEqual(expectedPattern, actualPattern),
+              timing: this.calculateTiming(gpio17Samples),
+              accuracy: this.calculateAccuracy(gpio17Samples)
+            };
+          }
+        }
+      `,
+      
+      connections: [
+        { chipPin: 'GPIO17_MONITOR', targetPin: 'pico:GP17' },
+        { chipPin: 'VCC', targetPin: 'pico:3V3' },
+        { chipPin: 'GND', targetPin: 'pico:GND' }
+      ]
+    },
     
     serialCheck: {
       expectedOutputs: [

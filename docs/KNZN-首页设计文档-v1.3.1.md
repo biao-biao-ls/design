@@ -25,11 +25,11 @@
 ### 1.1 首页定位与价值主张
 
 #### 核心定位
-首页是用户的**第一关**。不采用传统 Landing Page（头图+功能列表）的设计方式，而是直接展现一个**沉浸式互动装置**，通过仪式化的"通电"过程完成用户身份转换：从"游客"→ "KNZN 神经网络接入者"。
+首页是用户的**第一关**。不采用传统 Landing Page（头图+功能列表）的设计方式，而是直接展现一个**沉浸式互动装置**，通过仪式化的"通电"过程完成用户身份转换：从"游客"→ "KNZN 云端硬件实验室接入者"。
 
 #### 设计哲学
-- **零门槛上手**: 无需任何说明，点击开关 → 灯亮了 → 瞬间建立电路认知
-- **即时满足感**: 300ms 内给予反馈，1500ms 内完成整个"通电仪式"
+- **零成本开始**: 无需购买硬件，点击开关 → 灯亮了 → 瞬间建立"云端硬件"认知
+- **3秒启动体验**: 300ms 内给予反馈，1500ms 内完成整个"通电仪式"
 - **沉浸式体验**: 赛博朋克视觉 + 电影级音效 + 物理级交互手感
 - **商业转化**: Guest Mode 无需注册即可体验，通关后引导注册转化
 
@@ -80,8 +80,8 @@ const CONNECTION_STATE = {
 - 隐藏: 菜单、CTA 按钮、氛围光、页脚
 
 **通电状态** (当 isConnected === true):
-- 文案: `> SYSTEM_ONLINE. WELCOME BACK.`
-- 颜色: 荧光青 `#00FFC2`（表示已接通）
+- 文案: `> CLOUD_LAB_ONLINE. WELCOME TO THE FUTURE.`
+- 颜色: 荧光青 `#00FFC2`（表示已接通云端实验室）
 - 闸刀: 已在底部 (translateY: 100px)
 - 菜单: 已显示 (opacity: 1)
 - 氛围光: 已开启
@@ -468,7 +468,7 @@ const MOBILE_INTERACTION = {
 #### 2.1.4 CTA 按钮
 
 **样式**:
-- 文案: "[ 建立神经连接 ]"
+- 文案: "[ 启动云端实验室 ]"
 - 字体: Orbitron / Russo One
 - 尺寸: 280px × 48px
 - 背景: #00FFC2
@@ -492,7 +492,7 @@ const MOBILE_INTERACTION = {
 
 #### 2.1.5 文本规范
 
-**闪烁文案**: `> SYSTEM_OFFLINE. DRAG TO INITIALIZE.`
+**闪烁文案**: `> CLOUD_LAB_OFFLINE. DRAG TO INITIALIZE.`
 ```css
 @keyframes blink {
   0%, 49%, 100% { opacity: 1; }
@@ -686,10 +686,10 @@ navigator.vibrate([100, 50, 100]);   // 完成
 <button 
   id="cta-button"
   class="btn btn--primary"
-  aria-label="建立神经连接，进入关卡体验"
+  aria-label="启动云端实验室，开始硬件学习之旅"
   disabled
 >
-  [ 建立神经连接 ]
+  [ 启动云端实验室 ]
 </button>
 
 <!-- 实时区域 -->

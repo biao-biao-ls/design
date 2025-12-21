@@ -30,7 +30,8 @@
 └─ 即时颁发，无需等待
 
 👥 社交认证  
-├─ 上传实物运行视频到社区
+├─ 高难度仿真挑战通过
+├─ 或上传实物运行视频到社区（可选加分项）
 ├─ 社区评审团预筛选 + 简单人工审核
 └─ 或社区高赞自动触发（50+ 赞）
 ```
@@ -44,9 +45,10 @@
 • 证明：掌握了理论知识
 
 ⭐⭐ 实战认证 (Practice Badge)  
-• 理论认证 + 上传实物视频
+• 理论认证 + 高难度仿真挑战通过
+• 或理论认证 + 上传实物视频（加分项）
 • 社区评审团审核通过
-• 证明：能够实际应用
+• 证明：能够实际应用和解决复杂问题
 ```
 
 ### 徽章库（8 个核心徽章）
@@ -59,8 +61,9 @@
 🔧 硬件综合        [完成 3+ 不同技能]
 
 实战类：
-🏆 制造者          [上传 1 个实物视频]
-🏆 创新者          [上传 1 个改进作品视频]
+🏆 仿真大师        [通过高难度仿真挑战]
+🏆 制造者          [上传 1 个实物视频，可选]
+🏆 创新者          [上传 1 个改进作品视频，可选]
 
 社区类：
 👥 帮助者          [采纳答案 20+ 个]
@@ -154,7 +157,92 @@ const generateCertificate = (userData, badgeData) => {
 ### 2. 社区评审团机制
 
 ```javascript
-// 社区评审团 + 简单人工审核
+// 高难度仿真挑战系统
+const ADVANCED_SIMULATION_CHALLENGE = {
+  // 挑战环境配置
+  challengeEnvironment: {
+    aiAssistanceDisabled: true,    // 禁用 AI 助教
+    hintsDisabled: true,           // 禁用提示系统
+    timeLimit: 3600,               // 60 分钟时间限制
+    maxAttempts: 3,                // 最多 3 次尝试机会
+    
+    // 复杂电路调试任务
+    scenarios: [
+      {
+        id: 'motor_control_debug',
+        title: '电机控制系统故障排查',
+        description: '一个复杂的双电机控制系统出现异常，需要在限定时间内找出并修复所有问题',
+        
+        faultInjection: [
+          { type: 'code_bug', location: 'pwm_frequency_setting', severity: 'critical' },
+          { type: 'circuit_fault', location: 'h_bridge_connection', severity: 'major' },
+          { type: 'timing_issue', location: 'interrupt_handler', severity: 'minor' }
+        ],
+        
+        successCriteria: {
+          allFaultsFixed: true,
+          performanceMetrics: {
+            motorSpeedAccuracy: '>95%',
+            responseTime: '<100ms',
+            powerEfficiency: '>80%'
+          }
+        }
+      },
+      
+      {
+        id: 'sensor_fusion_challenge',
+        title: '多传感器数据融合算法实现',
+        description: '实现一个融合温度、湿度、光照传感器数据的智能环境监控系统',
+        
+        requirements: [
+          '实现卡尔曼滤波算法',
+          '处理传感器数据异常',
+          '实现自适应阈值调整',
+          '优化功耗管理'
+        ],
+        
+        evaluation: {
+          algorithmCorrectness: 40,
+          codeQuality: 30,
+          performanceOptimization: 20,
+          innovativeApproach: 10
+        }
+      }
+    ]
+  },
+  
+  // 自动评分系统
+  autoGrading: {
+    enabled: true,
+    
+    metrics: [
+      {
+        name: 'functional_correctness',
+        weight: 50,
+        testCases: 'automated_simulation_tests'
+      },
+      {
+        name: 'code_quality',
+        weight: 25,
+        analyzer: 'static_code_analysis'
+      },
+      {
+        name: 'performance_efficiency',
+        weight: 15,
+        benchmark: 'execution_time_memory_usage'
+      },
+      {
+        name: 'problem_solving_approach',
+        weight: 10,
+        evaluation: 'solution_path_analysis'
+      }
+    ],
+    
+    passingScore: 80  // 80分以上通过
+  }
+}
+
+// 社区评审团 + 简单人工审核（针对实物视频，可选）
 const AdminPanel = () => {
   const [pendingVideos, setPendingVideos] = useState([]);
   const [communityReviews, setCommunityReviews] = useState([]);
