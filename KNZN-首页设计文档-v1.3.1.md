@@ -1,4 +1,4 @@
-# 🏠 KNZN 首页 - 接入终端 (The Access Terminal) 完整设计文档
+# 🏠 KNZN 首页 - 接入终端 (The Access Terminal) 个人开发者版
 
 ## 📋 文档概述
 
@@ -6,10 +6,17 @@
 **页面名称**: 首页 (The Access Terminal)  
 **路由**: `/` 或 `/home`  
 **用户状态**: 游客 / 已登录均可访问  
-**文档版本**: v1.3.1 (性能优化完整版)  
-**最后更新**: 2024-12-20  
-**审核状态**: ✅ 可交付高级工程师进行开发  
-**文档类型**: 生产级设计规范（零歧义）
+**文档版本**: v2.0 (个人开发者优化版 - 降维打击)  
+**最后更新**: 2024-12-21  
+**审核状态**: ✅ 个人开发者可实现版本  
+**文档类型**: 实用级设计规范（高性价比）
+
+## 🎯 设计理念转变
+
+**从过度设计到实用主义**：
+- ❌ 放弃：Three.js 3D 渲染、复杂物理引擎、9 层音效系统
+- ✅ 采用：序列帧动画、CSS 3D、2 个核心音效
+- 🎯 目标：保持赛博朋克调性，开发成本砍掉 70%
 
 ---
 
@@ -81,28 +88,50 @@ const CONNECTION_STATE = {
 
 ---
 
-#### FR-002: 闸刀交互机制 ✅ 完整版
+#### FR-002: 闸刀交互机制 ✅ 序列帧版
 
 **触发方式**:
 - 仅在断电状态激活（已连接时拖拽无效）
 - 桌面端: 向下拖拽鼠标 (Y 轴)
-- 移动端: 双指按住两端下拉
+- 移动端: 单指下拉（简化为单指，提升易用性）
 
-**拖拽参数**:
+**序列帧动画配置**:
 ```javascript
-const DRAG_CONFIG = {
-  direction: 'vertical',
-  minDistance: 80,              // 最小拖拽距离 (px)
-  maxDistance: 100,             // 最大拖拽距离
-  friction: 0.92,               // 阻尼系数
-  bounceEasing: 'cubic-bezier(0.68, -0.55, 0.265, 1.55)',
-  dragBounds: { min: 0, max: 100 },
+const SWITCH_ANIMATION_CONFIG = {
+  // 序列帧配置（替代 3D 模型）
+  spriteSheet: {
+    imageUrl: '/images/switch-animation-sprite.png',
+    frameCount: 30,
+    frameWidth: 240,
+    frameHeight: 360,
+    totalWidth: 7200, // 240 * 30 frames
+    format: 'horizontal-strip'
+  },
   
-  // ⭐ 快速连续拖拽检测（彩蛋触发）
-  fidgetDetection: {
-    maxRepeatCount: 3,           // 1秒内往复 3 次触发彩蛋
-    timeWindow: 1000,            // 时间窗口 (ms)
-    minDistanceForRepeat: 50,    // 每次拖拽至少 50px
+  // 拖拽参数（大幅简化）
+  dragConfig: {
+    direction: 'vertical',
+    minDistance: 80,              // 最小拖拽距离 (px)
+    maxDistance: 100,             // 最大拖拽距离
+    
+    // 移除复杂物理引擎，改用 CSS transition
+    animation: {
+      type: 'css-transition',
+      duration: '300ms',
+      easing: 'cubic-bezier(0.68, -0.55, 0.265, 1.55)', // 弹性回弹
+      property: 'background-position'
+    }
+  },
+  
+  // 实时帧更新
+  frameUpdate: {
+    method: 'background-position',
+    calculation: `
+      const dragPercent = Math.max(0, Math.min(1, dragDistance / maxDistance));
+      const frameIndex = Math.floor(dragPercent * (frameCount - 1));
+      const yOffset = -frameIndex * frameHeight;
+      switchElement.style.backgroundPosition = \`0 \${yOffset}px\`;
+    `
   }
 }
 ```
@@ -110,176 +139,206 @@ const DRAG_CONFIG = {
 **拖拽结果**:
 ```
 IF 拖拽距离 < 80px:
-  → 闸刀弹回原位置 (300ms)
-  → 播放回弹音效 (spring_back.wav)
+  → 闸刀回弹到第 0 帧 (CSS transition 300ms)
+  → 播放回弹音效 (可选)
   
 ELSE IF 拖拽距离 >= 80px:
-  → 闸刀锁定在底部 (y=100px)
-  → 播放锁定音效 (switch_lock.wav)
+  → 闸刀锁定在第 30 帧 (最后一帧)
+  → 播放锁定音效 (switch_snap.wav)
   → 触发通电仪式流程
-  → 设置 sessionStorage 连接状态
-  
-⭐ ELSE IF 快速往复拖拽 3 次 (1s内):
-  → 触发"短路"彩蛋
-  → 播放 short_circuit_buzz.wav
-  → 显示 Glitch 干扰波纹
+  → 设置 localStorage 连接状态
 ```
 
 ---
 
-#### FR-003: 通电仪式流程 (Initialization Ritual) ✅ 超时兜底版
+#### FR-003: 通电仪式流程 (Initialization Ritual) ✅ 简化版
 
-**超时保护机制**:
+**简化后的通电仪式**:
 ```javascript
-const RITUAL_TIMEOUT_CONFIG = {
-  maxWaitTime: 2000,           // 最多等待 2 秒
-  checkInterval: 100,          // 每 100ms 检查一次加载状态
+const SIMPLIFIED_RITUAL_CONFIG = {
+  // 移除超时保护机制（不需要加载 3D 库）
+  // 移除复杂的 9 层音效同步
   
-  onTimeout: () => {
-    // 降级处理: 禁用 3D，改用 2D
-    FEATURE_FLAGS.use3DModel = false;
-    FEATURE_FLAGS.particleEffects = false;
-    
-    // 强制启动仪式，保证流程不中断
-    forceProceedWithRitual();
-  }
-};
-```
-
-**完整时间轴**:
-
-```
-0ms: 用户完成拖拽 (闸刀位置 >= 80px)
-  → 闸刀锁定
-  → 设置 sessionStorage 连接状态
+  totalDuration: 1500, // 缩短到 1.5 秒
   
-0-200ms: 黑屏死寂 + 超时保护
-  → 等待核心包加载
-  → 若 > 2000ms 未加载，强制继续
-  
-200ms: 锁定音效 (Lock Engagement)
-  → 播放 switch_lock.wav (沉闷金属声)
-  → 闸刀周围能量爆发效果
-  
-200ms: 电流启动 (Current Awakening)
-  → 播放 current-hum.wav (电流嗡鸣)
-  → 音量渐起: 0 → 0.6 (800ms内)
-  
-400ms: Logo 点亮 (Logo Ignition)
-  → Logo 颜色: #333333 → #00FFC2
-  → Glitch 故障效果 (0.5s, 5 steps)
-  
-800ms: 菜单按钮逐个点亮 (Menu Cascade)
-  → 按钮依次淡入 + 滑入
-  → 间隔 100ms
-  → 播放 ui_light_on.wav × N
-  
-1200ms: 背景氛围光渐入 (Ambient Bloom)
-  → 径向渐变光晕扩散
-  → 持续 2 秒
-  
-1500ms: CTA 按钮显示 (Call-to-Action)
-  → 弹出动画 (scale: 0.8 → 1)
-```
-
----
-
-#### FR-004: Guest Mode (游客模式) ✅ 音频解锁版
-
-**音频上下文解锁策略**:
-```javascript
-// ⭐ 现代浏览器音频播放限制
-// 必须在用户交互中触发 AudioContext.resume()
-
-// 在拖拽开始时（pointerdown）解锁音频播放权限
-switchElement.addEventListener('pointerdown', async (e) => {
-  if (audioContext.state === 'suspended') {
-    try {
-      await audioContext.resume();
-      sessionStorage.setItem('audio_context_unlocked', 'true');
-    } catch (err) {
-      console.warn('AudioContext resume failed:', err);
-      // 降级: 禁用音效
-      AUDIO_CONFIG.disabled = true;
+  timeline: [
+    {
+      time: 0,
+      action: 'user_completes_drag',
+      effect: 'switch_locks_to_final_frame'
+    },
+    {
+      time: 200,
+      action: 'play_snap_sound',
+      sound: 'switch_snap.wav',
+      volume: 0.7
+    },
+    {
+      time: 400,
+      action: 'logo_ignition',
+      effect: 'css_color_change + text_shadow_glow',
+      from: '#333333',
+      to: '#00FFC2',
+      duration: 300
+    },
+    {
+      time: 600,
+      action: 'play_hum_sound',
+      sound: 'electrical_hum.wav',
+      volume: 0.4,
+      loop: true
+    },
+    {
+      time: 800,
+      action: 'menu_cascade',
+      effect: 'css_opacity_animation',
+      stagger: 100 // 每个按钮间隔 100ms
+    },
+    {
+      time: 1200,
+      action: 'background_glow',
+      effect: 'css_background_gradient_animation',
+      duration: 300
+    },
+    {
+      time: 1500,
+      action: 'show_cta_button',
+      effect: 'css_scale_animation',
+      from: 'scale(0.8)',
+      to: 'scale(1)'
     }
-  }
+  ]
+}
+```
+
+**核心简化**:
+- ❌ 移除：复杂的超时保护、3D 库加载检测
+- ❌ 移除：9 层音效同步、复杂的音频上下文解锁
+- ❌ 移除：粒子爆发效果、重型粒子库
+- ✅ 保留：核心的视觉反馈和 2 个关键音效
+- ✅ 使用：纯 CSS 动画 + 简单的 JavaScript 时序控制
+
+---
+
+#### FR-004: Guest Mode (游客模式) ✅ 简化版
+
+**简化的音频处理**:
+```javascript
+// 简化的音频解锁（移除复杂的 AudioContext 管理）
+const SIMPLE_AUDIO_CONFIG = {
+  // 在用户首次交互时解锁音频
+  unlockOnFirstInteraction: true,
   
-  // 继续拖拽逻辑
-  startDrag(e);
-});
+  // 简化的音频文件管理
+  sounds: {
+    switch_snap: {
+      src: '/sounds/switch-snap.wav',
+      volume: 0.7,
+      preload: true
+    },
+    electrical_hum: {
+      src: '/sounds/electrical-hum.wav', 
+      volume: 0.4,
+      loop: true,
+      preload: true
+    }
+  },
+  
+  // 降级策略：如果音频加载失败，静默继续
+  fallback: {
+    onAudioLoadError: 'continue-without-sound',
+    showAudioDisabledNotice: false
+  }
+}
+
+// 简化的 Guest Token 管理
+const guestToken = 'guest_' + Date.now(); // 简单的时间戳
+localStorage.setItem('guest_token', guestToken);
+localStorage.setItem('knzn_connection_state', 'true');
 ```
 
 **实现机制**:
-```javascript
-const guestToken = generateGuestToken(); // UUID v4
-sessionStorage.setItem('guest_token', guestToken);
-sessionStorage.setItem('knzn_connection_state', 'true');
-
-// 数据持久化
-localStorage.setItem('guestProgress_' + guestToken, JSON.stringify({
-  sector: 1,
-  level: 1,
-  completedAt: timestamp,
-  circuitState: {...},
-  stars: 1
-}));
-```
+- ❌ 移除：复杂的 AudioContext 状态管理
+- ❌ 移除：音频上下文解锁的错误处理
+- ✅ 简化：基础的 HTML5 Audio API
+- ✅ 降级：音频加载失败时静默继续
 
 ---
 
-#### FR-005: 不稳定接触彩蛋 (The "Fidget" Easter Egg) ⭐ 创意增强
+#### FR-005: 移动端优化 ✅ 单指版
 
-**触发条件**:
+**移动端交互简化**:
 ```javascript
-// 在 1 秒内快速往复拖拽 3 次（各 >= 50px，最终 < 80px）
-const FIDGET_CONFIG = {
-  maxRepeatCount: 3,
-  timeWindow: 1000,
-  minDistancePerRepeat: 50,
-  maxOffsetToTrigger: 60,  // 未完成锁定
-};
+// 移除复杂的双指拖拽，改用单指
+const MOBILE_INTERACTION = {
+  touchMethod: 'single-finger',
+  reason: '双指拖拽对用户来说太复杂，降低转化率',
+  
+  // 单指拖拽配置
+  singleFingerDrag: {
+    minTouchDistance: 60, // 移动端降低最小距离
+    touchSensitivity: 1.2, // 提高灵敏度
+    
+    // 防误触
+    touchStartDelay: 100, // 100ms 后才开始识别拖拽
+    
+    // 视觉反馈
+    feedback: {
+      onTouchStart: 'switch-highlight',
+      onDragging: 'real-time-frame-update',
+      onTouchEnd: 'snap-to-final-state'
+    }
+  },
+  
+  // 移除用户引导复杂性
+  guidance: {
+    showHint: false, // 不显示双指提示
+    naturalInteraction: true // 让交互更自然
+  }
+}
 ```
 
-**触发效果**:
+**移动端特殊处理**:
+```css
+/* 移动端闸刀尺寸调整 */
+@media (max-width: 768px) {
+  .switch {
+    width: 160px;
+    height: 240px;
+    background-size: 160px 7200px; /* 调整雪碧图尺寸 */
+  }
+}
 
-| 元素 | 效果 | 持续时间 |
-|------|------|---------|
-| 音效 | short_circuit_buzz.wav (短路滋滋声) | 400ms |
-| 视觉 | Glitch 干扰波纹扫过屏幕 | 400ms |
-| 文案 | "⚠️ WARNING: SYSTEM INSTABILITY DETECTED" | 500ms |
-| 闸刀 | 微弱抖动反馈 | 200ms |
-| 触觉 | navigator.vibrate([50, 100, 50]) | - |
-
-**设计理由**:
-- 增强物理装置的真实感
-- 符合赛博朋克审美（不完美、有噪音的系统）
-- 提升交互趣味性（类似 Fidget Spinner）
-- 给予失败的拖拽也有视觉反馈
+/* 触摸优化 */
+.switch {
+  touch-action: pan-y; /* 只允许垂直滑动 */
+  user-select: none;
+  -webkit-user-select: none;
+}
+```
 
 ---
 
 ### 1.3 非功能需求 (Non-Functional Requirements)
 
-#### NFR-001: 性能指标
+#### NFR-001: 性能指标 (个人开发者版)
 
-| 指标 | 目标值 | 说明 |
-|------|--------|------|
-| 首屏加载时间 (LCP) | < 1.5s | 闸刀可交互 |
-| 可交互时间 (TTI) | < 2.0s | 页面完全可交互 |
-| 拖拽响应延迟 | < 16ms | 60fps 流畅度 |
-| 通电仪式流畅度 | 60fps | 无卡顿 |
-| 音效播放延迟 | < 50ms | 感知不到延迟 |
-| 移动端拖拽帧率 | ≥ 30fps | 避免掉帧 |
-| 音频上下文解锁 | < 100ms | 200ms 时播放就绪 |
-| 超时保护激活 | 2000ms | 核心包加载超时 |
+| 指标 | 目标值 | 实现方式 |
+|------|--------|----------|
+| 首屏加载时间 (LCP) | < 1.2s | 序列帧图片 + CSS，无 JS 库依赖 |
+| 可交互时间 (TTI) | < 1.5s | 纯 CSS 动画，无复杂计算 |
+| 拖拽响应延迟 | < 16ms | background-position 更新，GPU 加速 |
+| 通电仪式流畅度 | 60fps | CSS transitions，避免 JS 动画 |
+| 音效播放延迟 | < 100ms | HTML5 Audio，预加载 |
+| 移动端拖拽帧率 | ≥ 30fps | 单指拖拽，简化触摸逻辑 |
+| 总资源大小 | < 300KB | 2 个音效 + 1 个雪碧图 + CSS |
 
 **优化策略**:
-- 首页仅加载 HTML + CSS (< 200KB)
-- 3D 库延迟加载到关卡
-- 使用 `will-change: transform` 优化拖拽
-- 避免 `filter: drop-shadow`，改用 `box-shadow`
-- 移动端禁用粒子特效（降低 50%）
-- **⭐ Fidget 检测使用节流或 requestAnimationFrame 避免 JS 阻塞**
+- ✅ 序列帧雪碧图替代 3D 模型（减少 90% 资源）
+- ✅ CSS 动画替代 JS 动画（GPU 加速）
+- ✅ 2 个音效替代 9 个音效（减少 80% 音频资源）
+- ✅ 移除 Three.js 等重型库（减少 500KB+ JS）
+- ✅ 使用 WebP 格式雪碧图（减少 50% 图片大小）
 
 #### NFR-002: 浏览器兼容性
 
@@ -331,39 +390,51 @@ const FIDGET_CONFIG = {
 警告: #FF0055 (霓虹红)
 ```
 
-#### 2.1.2 闸刀设计规范
+#### 2.1.2 闸刀设计规范 (序列帧版)
 
-**尺寸**:
-- 桌面: 240px × 360px
-- 移动: 160px × 240px
+**资源规格**:
+- 雪碧图尺寸: 7200px × 360px (30 帧 × 240px 宽)
+- 单帧尺寸: 240px × 360px (桌面) / 160px × 240px (移动)
+- 文件格式: WebP (主) + PNG (降级)
+- 文件大小: < 150KB (压缩后)
 
-**材质** (PBR):
-- Metalness: 0.8 (高度金属质)
-- Roughness: 0.3 (光滑微观纹理)
+**视觉风格**:
+- 金属质感: 通过预渲染实现，无需实时 PBR
+- 光影效果: 烘焙到序列帧中
+- 状态变化: 通过帧切换实现
 
 **状态动画**:
 ```css
 .switch {
-  position: absolute;
-  transform: translateY(0);
-  will-change: transform;  /* ⭐ 性能优化 */
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  width: 240px;
+  height: 360px;
+  background-image: url('/images/switch-sprite.webp');
+  background-size: 7200px 360px; /* 30 帧宽度 */
+  background-position: 0 0; /* 初始第一帧 */
+  background-repeat: no-repeat;
+  will-change: background-position; /* GPU 加速 */
+  transition: background-position 300ms cubic-bezier(0.68, -0.55, 0.265, 1.55);
 }
 
 .switch.dragging {
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
-  z-index: 1000;
+  transition: none; /* 拖拽时禁用过渡，实时更新 */
 }
 
-.switch.active {
-  transform: translateY(100px);
-  box-shadow: 0 0px 20px rgba(0, 255, 194, 0.6);
+.switch.completed {
+  background-position: -6960px 0; /* 最后一帧 (29 * 240px) */
 }
 
-@keyframes switch-lock-burst {
-  0% { filter: brightness(1); transform: scale(1); }
-  50% { filter: brightness(1.3); transform: scale(1.05); }
-  100% { filter: brightness(1); transform: scale(1); }
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .switch {
+    width: 160px;
+    height: 240px;
+    background-size: 4800px 240px; /* 30 帧 × 160px */
+  }
+  
+  .switch.completed {
+    background-position: -4640px 0; /* 最后一帧 (29 * 160px) */
+  }
 }
 ```
 
@@ -509,47 +580,54 @@ document.addEventListener('touchmove', (e) => {
 
 ---
 
-### 2.3 音效设计
+### 2.3 音效设计 (简化版)
 
-#### 2.3.1 音效清单（9 个）
+#### 2.3.1 音效清单（2 个核心音效）
 
 | 文件名 | 时长 | 用途 | 播放时机 | 音量 |
 |--------|------|------|---------|------|
-| electrical_hum.wav | 1.5s | 悬停电流 | 鼠标悬停 | 0.3 |
-| mechanical_drag.wav | 0.8s | 拖拽机械音 | 拖拽期间 | 0.4 |
-| spring_back.wav | 0.3s | 回弹弹簧 | 失败回弹 | 0.5 |
-| switch_lock.wav | 0.15s | 锁定金属音 | 200ms | 0.7 |
-| current-hum.wav | 2.0s | 通电音效 | 200ms+ | 0.6 |
-| power_up.wav | 0.6s | Logo点亮 | 400ms | 0.8 |
-| ui_light_on.wav | 0.2s | UI点亮 | 800ms+ | 0.5 |
-| ambient_cyber.wav | 10.0s | 背景环境 | 1500ms+ | 0.15 |
-| **short_circuit_buzz.wav** | **0.4s** | **短路滋滋** | **Fidget触发** | **0.6** |
+| switch-snap.wav | 0.2s | 闸刀锁定音 | 拖拽完成时 | 0.7 |
+| electrical-hum.wav | 2.0s | 通电嗡鸣声 | 锁定后 200ms | 0.4 |
 
-#### 2.3.2 音效配置
+#### 2.3.2 音效配置 (简化版)
 
 ```javascript
-const AUDIO_CONFIG = {
-  switch_lock: {
+const SIMPLE_AUDIO_CONFIG = {
+  switch_snap: {
+    src: '/sounds/switch-snap.wav',
     volume: 0.7,
-    duration: 0.15,
-    priority: 'high',
-    description: '沉闷有力的金属"咔哒"声'
+    duration: 200, // ms
+    preload: true,
+    description: '清脆的金属锁定声'
   },
-  current_hum: {
-    volume: 0,
-    targetVolume: 0.6,
-    fadeDuration: 800,
-    delay: 200,
-    description: '电流嗡鸣声，与 switch_lock 层叠'
-  },
-  short_circuit_buzz: {
-    volume: 0.6,
-    duration: 0.4,
-    pitchVariation: 0.05,
-    description: '急促的不稳定"嗞嗞"声'
+  
+  electrical_hum: {
+    src: '/sounds/electrical-hum.wav',
+    volume: 0.4,
+    duration: 2000, // ms
+    loop: true,
+    fadeIn: 300, // 300ms 淡入
+    preload: true,
+    description: '低频电流嗡鸣，营造通电氛围'
   }
 }
+
+// 简化的播放逻辑
+function playSound(soundName) {
+  const audio = new Audio(SIMPLE_AUDIO_CONFIG[soundName].src);
+  audio.volume = SIMPLE_AUDIO_CONFIG[soundName].volume;
+  audio.play().catch(() => {
+    // 静默处理音频播放失败
+    console.log('Audio playback failed, continuing silently');
+  });
+}
 ```
+
+**简化理由**:
+- ❌ 移除 7 个非核心音效，减少 80% 音频资源
+- ❌ 移除复杂的音频同步和淡入淡出逻辑
+- ✅ 保留最重要的反馈音效：锁定确认 + 氛围营造
+- ✅ 降级策略：音频失败时静默继续，不影响核心体验
 
 ---
 
@@ -624,15 +702,15 @@ navigator.vibrate([100, 50, 100]);   // 完成
 
 ## 🛠️ 第三部分：技术实现指南
 
-### 3.1 技术栈
+### 3.1 技术栈 (个人开发者版)
 
 - **前端框架**: Vue 3 + Nuxt 4 + TypeScript
-- **动画库**: GSAP + CSS3
-- **3D 渲染**: Three.js (延迟加载)
-- **音效库**: Howler.js
-- **优化**: Lazy Loading, Code Splitting
+- **动画库**: 纯 CSS3 Transitions (移除 GSAP 依赖)
+- **图片处理**: WebP + PNG 降级
+- **音效库**: HTML5 Audio API (移除 Howler.js)
+- **优化策略**: 懒加载、代码分割、资源压缩
 
-### 3.2 文件结构
+### 3.2 文件结构 (简化版)
 
 ```
 src/
@@ -640,285 +718,286 @@ src/
 │   └── index.vue                # 首页主组件
 ├── components/
 │   ├── AccessTerminal.vue       # 首页容器
-│   ├── PowerSwitch.vue          # 闸刀组件
+│   ├── SwitchSprite.vue         # 序列帧闸刀组件
 │   ├── Logo.vue                 # Logo组件
-│   ├── CTAButton.vue            # CTA按钮
-│   └── DualFingerHint.vue       # 双指引导提示
+│   └── CTAButton.vue            # CTA按钮
 ├── composables/
 │   ├── usePowerSequence.ts      # 通电仪式逻辑
-│   ├── useDragPhysics.ts        # 拖拽物理引擎
-│   ├── useAudioManager.ts       # 音效管理
-│   └── useMobileGuide.ts        # 移动端引导逻辑
+│   ├── useSpriteAnimation.ts    # 序列帧动画控制
+│   └── useSimpleAudio.ts        # 简化音效管理
 ├── assets/
-│   ├── models/switch.glb        # 闸刀3D模型
+│   ├── images/
+│   │   ├── switch-sprite.webp   # 闸刀序列帧雪碧图
+│   │   └── switch-sprite.png    # PNG 降级
 │   ├── sounds/
-│   │   ├── current-hum.wav
-│   │   ├── mechanical_drag.wav
-│   │   ├── switch_lock.wav
-│   │   └── short_circuit_buzz.wav
-│   └── styles/access-terminal.css
-└── utils/analytics.ts            # 分析埋点
+│   │   ├── switch-snap.wav      # 锁定音效
+│   │   └── electrical-hum.wav   # 通电音效
+│   └── styles/
+│       └── access-terminal.css  # 样式文件
+└── utils/
+    └── analytics.ts             # 分析埋点
 ```
 
-### 3.3 核心实现要点
+### 3.3 核心实现要点 (个人开发者版)
 
-#### 音频解锁策略
+#### 序列帧动画控制
 
-```javascript
-switchElement.addEventListener('pointerdown', async (e) => {
-  // 解锁 AudioContext
-  if (audioContext.state === 'suspended') {
-    try {
-      await audioContext.resume();
-      sessionStorage.setItem('audio_context_unlocked', 'true');
-    } catch (err) {
-      console.warn('AudioContext resume failed');
-      AUDIO_CONFIG.disabled = true;
-    }
-  }
-  startDrag(e);
-});
-```
-
-#### 超时保护机制
-
-```javascript
-function startInitializationRitual() {
-  const startTime = Date.now();
-  const timeoutChecker = setInterval(() => {
-    const elapsed = Date.now() - startTime;
-    const isReady = window.__NUXT__ && window.THREE;
-    
-    if (isReady) {
-      clearInterval(timeoutChecker);
-      proceedWithRitual();
-      return;
-    }
-    
-    if (elapsed > 2000) {
-      clearInterval(timeoutChecker);
-      FEATURE_FLAGS.use3DModel = false;
-      FEATURE_FLAGS.particleEffects = false;
-      replaceWith2DFallback();
-      proceedWithRitual();
-    }
-  }, 100);
-}
-```
-
-#### Fidget 彩蛋检测 ✅ 性能优化版
-
-```javascript
-class FidgetDetector {
-  constructor() {
-    this.dragHistory = [];
-    this.lastCheckTime = 0;
-    this.checkThrottleInterval = 50; // 节流间隔 50ms
-    this.rafScheduled = false;
+```typescript
+/**
+ * 序列帧闸刀动画控制器
+ * 替代复杂的 3D 渲染和物理引擎
+ */
+class SpriteSwitch {
+  private element: HTMLElement;
+  private frameCount: number = 30;
+  private frameWidth: number = 240;
+  private isDragging: boolean = false;
+  private startY: number = 0;
+  private maxDragDistance: number = 100;
+  
+  constructor(element: HTMLElement) {
+    this.element = element;
+    this.setupEventListeners();
   }
   
-  // 方案 1: 使用节流（Throttle）- 适合高频 touchmove 事件
-  recordDrag(dragData) {
-    this.dragHistory.push(dragData);
+  private setupEventListeners(): void {
+    // 统一的指针事件处理（支持鼠标和触摸）
+    this.element.addEventListener('pointerdown', this.onDragStart.bind(this));
+    document.addEventListener('pointermove', this.onDragMove.bind(this));
+    document.addEventListener('pointerup', this.onDragEnd.bind(this));
+  }
+  
+  private onDragStart(e: PointerEvent): void {
+    this.isDragging = true;
+    this.startY = e.clientY;
+    this.element.classList.add('dragging');
     
-    // ⭐ 性能优化：在高频 touchmove 事件中，每 50ms 最多检查一次
-    // 防止 JS 线程阻塞（特别重要：低端安卓设备）
-    const now = Date.now();
-    if (now - this.lastCheckTime > this.checkThrottleInterval) {
-      this.lastCheckTime = now;
-      
-      // 清理过期记录
-      const cutoffTime = now - 1000;
-      this.dragHistory = this.dragHistory.filter(
-        (d) => d.timestamp > cutoffTime
-      );
-      
-      // 检查是否触发彩蛋
-      this.checkForFidget();
+    // 简化的音频解锁（首次交互时）
+    this.unlockAudio();
+  }
+  
+  private onDragMove(e: PointerEvent): void {
+    if (!this.isDragging) return;
+    
+    const dragDistance = Math.max(0, e.clientY - this.startY);
+    const dragPercent = Math.min(1, dragDistance / this.maxDragDistance);
+    
+    // 实时更新序列帧
+    this.updateFrame(dragPercent);
+  }
+  
+  private updateFrame(percent: number): void {
+    const frameIndex = Math.floor(percent * (this.frameCount - 1));
+    const xOffset = -frameIndex * this.frameWidth;
+    this.element.style.backgroundPosition = `${xOffset}px 0`;
+  }
+  
+  private onDragEnd(e: PointerEvent): void {
+    if (!this.isDragging) return;
+    
+    const dragDistance = e.clientY - this.startY;
+    this.isDragging = false;
+    this.element.classList.remove('dragging');
+    
+    if (dragDistance >= 80) {
+      // 成功：锁定到最后一帧
+      this.lockSwitch();
+    } else {
+      // 失败：回弹到第一帧
+      this.resetSwitch();
     }
   }
   
-  // 方案 2: 使用 requestAnimationFrame（RAF）- 性能最优方案
-  // 使用场景：如果需要更精细的控制或其他动画协调
-  recordDragWithRAF(dragData) {
-    this.dragHistory.push(dragData);
+  private lockSwitch(): void {
+    // 锁定到最后一帧
+    this.element.style.backgroundPosition = `-${(this.frameCount - 1) * this.frameWidth}px 0`;
+    this.element.classList.add('completed');
     
-    // ⭐ 性能优化：将检查任务提交到浏览器的下一帧
-    // 确保在浏览器重绘之前执行，不会阻塞用户交互
-    if (!this.rafScheduled) {
-      this.rafScheduled = true;
-      requestAnimationFrame(() => {
-        // 清理过期记录
-        const now = Date.now();
-        this.dragHistory = this.dragHistory.filter(
-          (d) => now - d.timestamp < 1000
-        );
-        
-        // 检查彩蛋
-        this.checkForFidget();
-        this.rafScheduled = false;
-      });
-    }
+    // 播放锁定音效
+    this.playSound('switch-snap');
+    
+    // 触发通电仪式
+    setTimeout(() => this.startPowerSequence(), 200);
   }
   
-  checkForFidget() {
-    const validDrags = this.dragHistory.filter((d) => d.distance >= 50);
-    if (validDrags.length >= 3) {
-      const lastDrag = this.dragHistory[this.dragHistory.length - 1];
-      if (lastDrag.position < 80) {
-        this.triggerFidgetEasterEgg();
-      }
-    }
+  private resetSwitch(): void {
+    // 回弹到第一帧（CSS transition 处理动画）
+    this.element.style.backgroundPosition = '0 0';
   }
   
-  triggerFidgetEasterEgg() {
-    // 播放音效
-    playSound('short_circuit_buzz.wav', { volume: 0.6 });
-    
-    // 显示Glitch波纹
-    const glitch = document.createElement('div');
-    glitch.className = 'glitch-overlay active';
-    document.body.appendChild(glitch);
-    setTimeout(() => glitch.remove(), 400);
-    
-    // 闸刀抖动
-    const switchEl = document.querySelector('.switch');
-    switchEl.classList.add('fidgeting');
-    setTimeout(() => switchEl.classList.remove('fidgeting'), 200);
-    
-    // 更新文案
-    const status = document.querySelector('.system-status');
-    status.textContent = '⚠️ WARNING: SYSTEM INSTABILITY DETECTED';
-    status.style.color = '#FF0055';
-    
-    // 触觉反馈
-    navigator.vibrate([50, 100, 50]);
-    
-    // 恢复
-    setTimeout(() => {
-      status.textContent = '> SYSTEM_OFFLINE. DRAG TO INITIALIZE.';
-      status.style.color = '#33FF00';
-    }, 500);
-  }
-}
-
-// 使用选择：
-// 1. 推荐用节流方案（recordDrag）- 简单、可靠、性能好
-const fidgetDetector = new FidgetDetector();
-document.addEventListener('pointermove', (e) => {
-  if (isDragging) {
-    fidgetDetector.recordDrag({
-      timestamp: Date.now(),
-      distance: Math.abs(e.clientY - startY),
-      position: Math.max(0, Math.min(100, e.clientY - startY))
+  private playSound(soundName: string): void {
+    const audio = new Audio(`/sounds/${soundName}.wav`);
+    audio.volume = soundName === 'switch-snap' ? 0.7 : 0.4;
+    audio.play().catch(() => {
+      // 静默处理音频失败
+      console.log('Audio playback failed, continuing silently');
     });
   }
-});
-
-// 2. 或使用 RAF 方案（recordDragWithRAF）- 如果需要更高级的帧同步
-// const fidgetDetector = new FidgetDetector();
-// document.addEventListener('pointermove', (e) => {
-//   if (isDragging) {
-//     fidgetDetector.recordDragWithRAF({...});
-//   }
-// });
+  
+  private startPowerSequence(): void {
+    // 简化的通电仪式
+    setTimeout(() => this.playSound('electrical-hum'), 200);
+    setTimeout(() => this.animateLogo(), 400);
+    setTimeout(() => this.showMenu(), 800);
+    setTimeout(() => this.showCTA(), 1200);
+  }
+  
+  private animateLogo(): void {
+    const logo = document.querySelector('.logo');
+    logo?.classList.add('powered');
+  }
+  
+  private showMenu(): void {
+    const menuItems = document.querySelectorAll('.menu-item');
+    menuItems.forEach((item, index) => {
+      setTimeout(() => item.classList.add('visible'), index * 100);
+    });
+  }
+  
+  private showCTA(): void {
+    const cta = document.querySelector('.cta-button');
+    cta?.classList.add('visible');
+  }
+  
+  private unlockAudio(): void {
+    // 简化的音频解锁
+    const audio = new Audio();
+    audio.play().catch(() => {});
+  }
+}
 ```
 
-**性能优化要点说明**:
+#### 简化的 CSS 动画
 
-| 方案 | 优点 | 缺点 | 适用场景 |
-|------|------|------|---------|
-| **节流 (Throttle)** | 简单直接，不依赖浏览器 API | 精确度 ± 50ms | 大多数场景（推荐） |
-| **RAF (requestAnimationFrame)** | 与浏览器帧同步，最优性能 | 依赖浏览器渲染 | 需要高精度动画同步 |
-| **防抖 (Debounce)** | 最后一次执行 | 延迟判定 | 不适合本场景 |
+```css
+/* 序列帧闸刀 */
+.switch {
+  width: 240px;
+  height: 360px;
+  background-image: url('/images/switch-sprite.webp');
+  background-size: 7200px 360px;
+  background-position: 0 0;
+  background-repeat: no-repeat;
+  cursor: grab;
+  will-change: background-position;
+  transition: background-position 300ms cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.switch.dragging {
+  cursor: grabbing;
+  transition: none; /* 拖拽时禁用过渡 */
+}
+
+/* Logo 通电动画 */
+.logo {
+  color: #333333;
+  transition: all 300ms ease-out;
+}
+
+.logo.powered {
+  color: #00FFC2;
+  text-shadow: 
+    0 0 10px rgba(0, 255, 194, 0.8),
+    0 0 20px rgba(0, 255, 194, 0.6);
+}
+
+/* 菜单项渐入 */
+.menu-item {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: all 300ms ease-out;
+}
+
+.menu-item.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* CTA 按钮弹出 */
+.cta-button {
+  opacity: 0;
+  transform: scale(0.8);
+  transition: all 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.cta-button.visible {
+  opacity: 1;
+  transform: scale(1);
+}
+```
 
 ---
 
-## ✅ 质检清单
+## ✅ 质检清单 (个人开发者版)
 
 ### 功能验证
 - [ ] 拖拽 >= 80px 触发通电
-- [ ] 拖拽 < 80px 回弹
-- [ ] 200ms 时 switch_lock.wav 播放
+- [ ] 拖拽 < 80px 回弹（CSS transition）
+- [ ] 200ms 时 switch-snap.wav 播放
 - [ ] Guest Mode 数据保存
-- [ ] 移动端双指引导显示
-- [ ] Fidget 彩蛋触发（1s内往复3次）
+- [ ] 移动端单指拖拽正常
+- [ ] 序列帧动画流畅切换
 
 ### 性能验证
-- [ ] 首屏加载 < 1.5s
+- [ ] 首屏加载 < 1.2s
 - [ ] 拖拽帧率 60fps (桌面) / 30fps+ (移动)
 - [ ] 无卡顿
-- [ ] will-change 正确应用
-- [ ] **⭐ Fidget 检测使用节流或 RAF，不阻塞 JS 线程**
+- [ ] background-position 更新流畅
+- [ ] 总资源 < 300KB
 
 ### 视觉验证
+- [ ] 序列帧切换自然
 - [ ] 色值完全匹配
-- [ ] 动画缓动正确
+- [ ] CSS 动画缓动正确
 - [ ] 响应式各断点正常
-- [ ] Glitch 清晰可见
-- [ ] 能量爆发效果可见
+- [ ] Logo 通电效果可见
 
 ### 音效验证
-- [ ] 9 个音效加载完成
+- [ ] 2 个音效加载完成
 - [ ] 音量符合配置
-- [ ] 延迟 < 50ms
-- [ ] switch_lock + current_hum 无冲突
-- [ ] short_circuit_buzz 清晰
+- [ ] 延迟 < 100ms
+- [ ] 音频失败时静默继续
 
 ### 移动端验证
-- [ ] 双指拖拽正常
-- [ ] 单指提示显示
-- [ ] 振动反馈工作
+- [ ] 单指拖拽正常
+- [ ] 触摸响应灵敏
+- [ ] 序列帧在移动端正确缩放
 - [ ] 性能达标 (30fps+)
-- [ ] **⭐ 低端安卓设备上 Fidget 检测不卡顿**
 
-### 无障碍验证
-- [ ] aria-label 完整
-- [ ] 色彩对比度符合
-- [ ] Tab 键导航正确
-- [ ] 屏幕阅读器支持
+### 降级验证
+- [ ] WebP 不支持时 PNG 降级
+- [ ] 音频播放失败时静默继续
+- [ ] 低端设备性能正常
 
 ---
 
 ## 📝 更新日志
 
-### v1.3.1 性能优化版 (2024-12-20)
+### v2.0 个人开发者优化版 (2024-12-21)
 
-✅ **性能改进**:
-- Fidget 检测添加节流机制（50ms 间隔）
-- 提供 RAF 方案作为高性能替代
-- 明确说明两种方案的适用场景
-- 特别强调低端安卓设备的性能考虑
+✅ **核心简化**:
+- 序列帧动画替代 Three.js 3D 渲染
+- 2 个核心音效替代 9 层音效系统
+- CSS 动画替代复杂 JS 动画
+- 单指拖拽替代双指拖拽
 
-✅ **文档完整性**:
-- 代码注释清晰说明性能优化理由
-- 包含两种实现方案对比表
-- 实际使用示例
-- 性能优化检查清单
+✅ **性能优化**:
+- 总资源从 >1MB 降至 <300KB
+- 开发工时从 11-17 天降至 1.5 天
+- 移除所有重型 JS 库依赖
+- GPU 加速的 CSS 动画
 
-### v1.3 最终版本 (2024-12-20)
-
-✅ **核心增强**:
-- 状态持久化：已连接用户跳过拖拽
-- 音频解锁策略：pointerdown 时解锁 AudioContext
-- 超时保护：2 秒核心包加载超时自动降级
-- Fidget 彩蛋：快速往复拖拽触发"短路"效果
-
-✅ **音效补全**:
-- switch_lock.wav (锁定音效)
-- short_circuit_buzz.wav (短路音效)
-- 共 9 个音效文件
-
-✅ **文档完成度**:
-- 5 项 FR（功能需求）
-- 4 项 NFR（非功能需求）
-- 零歧义、可直接开发
+✅ **实用性提升**:
+- 移动端交互更自然
+- 音频失败时优雅降级
+- 跨设备兼容性更好
+- 维护成本大幅降低
 
 ---
 
-**文档版本**: v1.3.1 (Final - 性能优化完整版)  
-**编制时间**: 2024-12-20  
-**审核状态**: ✅ 生产级规范  
-**交付对象**: 高级前端工程师
+**文档版本**: v2.0 (个人开发者优化版)  
+**编制时间**: 2024-12-21  
+**审核状态**: ✅ 个人开发者可实现  
+**预估工时**: 1.5 天（vs 原版 11-17 天）
 
 ---
