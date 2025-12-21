@@ -281,7 +281,7 @@ time.sleep(1)
 
 ### FR-002: 关卡进度跟踪与后端判题
 
-**描述**: 实时显示用户在当前关卡中的进度，提供即时的成功/失败反馈。**判题逻辑在后端执行，防止作弊。**
+**描述**: 实时显示用户在当前关卡中的进度，提供即时的成功/失败反馈。**判题逻辑在后端执行，采用简化的防作弊策略。**
 
 **进度追踪系统**:
 ```javascript
@@ -438,16 +438,17 @@ async function validateSubmission({ lessonConfig, submissionData, userCode }) {
     }
   }
   
-  // 4. 时序检查（防止作弊，但不过度）
+  // 4. 简化的时序检查（MVP 阶段不过度防作弊）
   const timeSpent = submissionData.timeSpent || 0
-  if (timeSpent < 10000) { // 少于 10 秒
+  if (timeSpent < 30000) { // 少于 30 秒（调整为更合理的时间）
     errors.push('完成时间异常')
     return { passed: false, errors, hints, score: 0 }
   }
   
-  // 🚫 MVP 阶段移除行为分析
-  // 原因：极易误判，影响正常用户体验
-  // 只依赖 Custom Chip 结果验证和时间戳签名即可防御 99% 作弊
+  // 🎯 MVP 阶段防作弊策略：简单有效
+  // 原因：过度防作弊会误判正常用户，影响体验
+  // 策略：时间戳签名 + 基础时间验证 + Custom Chip 结果验证
+  // 这样可以防御 99% 的作弊，同时保持良好的用户体验
   
   const passed = score >= 80 // 80 分及格
   
@@ -1011,38 +1012,47 @@ const ACHIEVEMENT_SYSTEM = {
     socialShare: {
       platforms: [
         {
-          name: 'wechat',
-          label: '分享到微信',
-          action: 'generate-qrcode',
-          icon: 'wechat-icon.svg'
-        },
-        {
-          name: 'weibo',
-          label: '分享到微博',
-          action: 'open-share-dialog',
-          icon: 'weibo-icon.svg',
-          hashtags: ['#KNZN', '#硬件学习', '#电路设计']
-        },
-        {
-          name: 'douyin',
-          label: '分享到抖音',
-          action: 'download-video',
-          icon: 'douyin-icon.svg',
-          format: 'mp4'
-        },
-        {
           name: 'twitter',
           label: 'Share to Twitter',
           action: 'open-share-dialog',
           icon: 'twitter-icon.svg',
-          hashtags: ['#KNZN', '#HardwareLearning']
+          hashtags: ['#KNZN', '#HardwareLearning', '#Arduino', '#Electronics']
+        },
+        {
+          name: 'linkedin',
+          label: 'Share to LinkedIn',
+          action: 'open-share-dialog',
+          icon: 'linkedin-icon.svg',
+          description: 'Add to LinkedIn Profile',
+          certificateIntegration: true // 支持证书添加到 LinkedIn
+        },
+        {
+          name: 'reddit',
+          label: 'Share to Reddit',
+          action: 'open-share-dialog',
+          icon: 'reddit-icon.svg',
+          suggestedSubreddits: ['r/arduino', 'r/esp32', 'r/electronics', 'r/sideproject']
+        },
+        {
+          name: 'discord',
+          label: 'Share to Discord',
+          action: 'copy-share-text',
+          icon: 'discord-icon.svg',
+          description: 'Copy text for Discord communities'
+        },
+        {
+          name: 'hackernews',
+          label: 'Share to Hacker News',
+          action: 'open-share-dialog',
+          icon: 'hn-icon.svg',
+          description: 'Submit to Show HN'
         }
       ],
       
       templates: {
-        default: '我在 KNZN 完成了 {lessonTitle}！用时 {duration} 分钟，准确度 {accuracy}%。一起来学习硬件吧！',
-        speed: '⚡ 速度挑战！我用 {duration} 分钟完成了 {lessonTitle}，你能更快吗？',
-        perfect: '🏆 完美通关！{lessonTitle} 100% 准确度达成！'
+        default: 'I just completed {lessonTitle} on KNZN! Took me {duration} minutes with {accuracy}% accuracy. Join me in learning hardware! 🚀',
+        speed: '⚡ Speed challenge! I completed {lessonTitle} in {duration} minutes. Can you beat that?',
+        perfect: '🏆 Perfect score! Achieved 100% accuracy on {lessonTitle}! #HardwareLearning'
       }
     },
     
@@ -1050,13 +1060,13 @@ const ACHIEVEMENT_SYSTEM = {
       firstShare: {
         xp: 50,
         badge: 'first-sharer',
-        message: '感谢分享！获得 50 XP'
+        message: 'Thanks for sharing! Earned 50 XP'
       },
       viralBonus: {
         condition: 'share_brings_3_new_users',
         xp: 200,
         badge: 'influencer',
-        message: '你的分享带来了 3 个新用户！'
+        message: 'Your share brought 3 new users! Community builder!'
       }
     }
   }
@@ -1157,33 +1167,48 @@ const LAYOUT_SYSTEM = {
     }
   },
 
-  // 移动端策略：明确定位为管理/查看工具
+  // 移动端策略：强制引导到桌面端
   mobile: {
-    layout: 'redirect-to-desktop',
+    layout: 'force-desktop-redirect',
     
     mobileStrategy: {
       showDesktopPrompt: true,
-      promptMessage: '为了获得最佳学习体验，建议在电脑上打开此关卡',
-      promptSubtext: 'Wokwi 仿真器需要较大屏幕和键盘输入',
+      fullScreenOverlay: true, // 全屏覆盖层，不允许绕过
+      promptMessage: '🖥️ For the best learning experience, please open this lesson on a computer',
+      promptSubtext: 'Wokwi simulator requires a larger screen and keyboard input for optimal interaction',
       
       actions: [
         {
-          label: '发送到我的电脑',
+          label: '📧 Send Link to Email',
           action: 'send-link-to-email',
-          description: '将关卡链接发送到邮箱，稍后在电脑上继续'
+          description: 'Get the lesson link in your email to continue on computer',
+          primary: true
         },
         {
-          label: '查看关卡介绍',
+          label: '📋 Copy Link',
+          action: 'copy-lesson-link',
+          description: 'Copy link to open on your computer'
+        },
+        {
+          label: '📖 View Lesson Overview',
           action: 'show-lesson-overview',
-          description: '了解关卡内容和学习目标'
-        },
-        {
-          label: '仍要继续',
-          action: 'force-mobile-view',
-          description: '体验可能不佳，但仍可查看内容',
-          warning: true
+          description: 'Learn about this lesson (read-only preview)'
         }
-      ]
+      ],
+      
+      // 移除"仍要继续"选项，避免糟糕体验
+      noForceOption: true,
+      
+      // 强化引导文案
+      educationalMessage: {
+        title: '💡 Why Computer is Better?',
+        points: [
+          '⌨️ Code editing requires keyboard shortcuts',
+          '🖱️ Circuit wiring needs precise mouse control', 
+          '👀 Multiple panels need larger screen space',
+          '🔧 Debug tools work best with full interface'
+        ]
+      }
     },
     
     fallbackLayout: `
@@ -1296,7 +1321,160 @@ const LAYOUT_SYSTEM = {
 }
 ```
 
-### FR-007: 状态持久化
+### FR-008: 时区处理与国际化（海外市场必需）
+
+**描述**: 处理全球用户的时区差异，确保时间显示的准确性和用户体验
+
+**时区处理配置**:
+```javascript
+const TIMEZONE_HANDLING = {
+  // 自动检测用户时区
+  autoDetection: {
+    enabled: true,
+    method: 'Intl.DateTimeFormat().resolvedOptions().timeZone',
+    fallback: 'UTC',
+    
+    // 存储用户偏好
+    storage: {
+      key: 'user_timezone',
+      persist: true,
+      updateOnChange: true
+    }
+  },
+  
+  // 时间显示格式
+  displayFormats: {
+    // 相对时间（用于活动、截止日期等）
+    relative: {
+      library: 'date-fns',
+      format: 'formatDistanceToNow',
+      locale: 'auto', // 根据用户语言自动选择
+      addSuffix: true
+    },
+    
+    // 绝对时间（用于证书、记录等）
+    absolute: {
+      format: 'PPpp', // Dec 22, 2024 at 2:30 PM
+      timezone: 'user', // 显示用户本地时间
+      showTimezone: true // 显示时区缩写
+    },
+    
+    // 直播/活动时间
+    event: {
+      format: 'EEEE, MMMM do, yyyy \'at\' h:mm a (zzz)',
+      example: 'Monday, December 22nd, 2024 at 2:30 PM (PST)',
+      countdown: true // 显示倒计时
+    }
+  },
+  
+  // 关键时间转换
+  conversions: {
+    // 学习进度时间
+    progressTime: (utcTime, userTimezone) => {
+      return formatInTimeZone(utcTime, userTimezone, 'PPpp')
+    },
+    
+    // 证书颁发时间
+    certificateTime: (utcTime, userTimezone) => {
+      return formatInTimeZone(utcTime, userTimezone, 'MMMM do, yyyy')
+    },
+    
+    // 活动开始时间
+    eventTime: (utcTime, userTimezone) => {
+      const localTime = formatInTimeZone(utcTime, userTimezone, 'PPpp')
+      const countdown = formatDistanceToNow(utcTime, { addSuffix: true })
+      return { localTime, countdown }
+    }
+  },
+  
+  // 时区友好的组件
+  components: {
+    // 智能时间显示组件
+    SmartTime: {
+      props: ['utcTime', 'format', 'showRelative'],
+      computed: {
+        displayTime() {
+          const userTz = this.$store.state.user.timezone
+          return this.formatTimeForUser(this.utcTime, userTz)
+        }
+      }
+    },
+    
+    // 活动倒计时组件
+    EventCountdown: {
+      props: ['eventTime'],
+      data: {
+        countdown: '',
+        updateInterval: null
+      },
+      methods: {
+        updateCountdown() {
+          const now = new Date()
+          const eventDate = new Date(this.eventTime)
+          this.countdown = formatDistanceToNow(eventDate, { addSuffix: true })
+        }
+      }
+    }
+  }
+}
+
+// 实际使用示例
+// components/SmartTimeDisplay.vue
+<template>
+  <div class="time-display">
+    <span class="local-time">{{ localTime }}</span>
+    <span v-if="showRelative" class="relative-time">{{ relativeTime }}</span>
+    <span v-if="showTimezone" class="timezone">{{ userTimezone }}</span>
+  </div>
+</template>
+
+<script setup>
+import { formatInTimeZone, formatDistanceToNow } from 'date-fns-tz'
+
+const props = defineProps({
+  utcTime: String,
+  showRelative: Boolean,
+  showTimezone: Boolean
+})
+
+const userTimezone = computed(() => {
+  return useUserStore().timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
+})
+
+const localTime = computed(() => {
+  return formatInTimeZone(props.utcTime, userTimezone.value, 'PPpp')
+})
+
+const relativeTime = computed(() => {
+  return formatDistanceToNow(new Date(props.utcTime), { addSuffix: true })
+})
+</script>
+
+// 后端时间处理
+// server/api/events/schedule.get.ts
+export default defineEventHandler(async (event) => {
+  const userTimezone = getCookie(event, 'user_timezone') || 'UTC'
+  
+  const events = await db.select().from(events)
+  
+  // 为每个事件添加用户本地时间
+  const eventsWithLocalTime = events.map(evt => ({
+    ...evt,
+    localStartTime: formatInTimeZone(evt.startTime, userTimezone, "yyyy-MM-dd'T'HH:mm:ssXXX"),
+    userTimezone: userTimezone
+  }))
+  
+  return eventsWithLocalTime
+})
+```
+
+**海外市场时区处理重点**:
+- ✅ 自动检测用户时区，无需手动设置
+- ✅ 所有时间显示都转换为用户本地时间
+- ✅ 活动、直播时间显示倒计时和本地时间
+- ✅ 证书时间使用用户本地时区
+- ✅ 支持夏令时自动切换
+- ✅ 时区缩写显示（PST、EST、GMT等）
 
 **描述**: 简单的本地存储，支持学习进度恢复
 

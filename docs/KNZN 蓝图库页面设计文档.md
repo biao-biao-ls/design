@@ -16,7 +16,7 @@
 **核心特色**：
 - **质量保证** - 所有蓝图均为官方出品，100% 可在 Wokwi 中复现
 - **零成本开始** - 无需购买硬件，3秒启动你的第一个电路
-- **知识交付** - 蓝图免费下载，通过联盟营销和 Pro 会员变现
+- **知识交付** - 蓝图免费下载，通过海外供应商联盟营销和 Pro 会员变现
 - **深度学习** - 配套"设计思路复盘"文档，以教为学的产出沉淀
 
 ## 📚 蓝图库的分类体系
@@ -185,7 +185,7 @@ Wokwi 仿真器预览 + 演示 GIF
 **Tab 2: 技术资料** ⚙️
 - 原理图预览（图片）
 - 关键技术点说明
-- BOM 智能表格（可交互，支持一键导出淘宝/京东搜索词）
+- BOM 智能表格（可交互，支持一键导出到海外供应商：Amazon、Adafruit、SparkFun、Mouser、DigiKey）
 
 **Tab 3: 用户反馈** 💬
 - 用户评价和评分
@@ -194,7 +194,7 @@ Wokwi 仿真器预览 + 演示 GIF
 
 #### 右列 Sidebar（30%）
 
-##### BOM 智能表格（联盟营销）
+##### BOM 智能表格（海外供应商联盟营销）
 
 ```
 🔗 BOM 表格 - 智能采购助手
@@ -208,7 +208,7 @@ Wokwi 仿真器预览 + 演示 GIF
 ✅ 连接线材规格
 ✅ 详细制作说明书
 
-[📋 复制淘宝搜索词] [🛒 生成京东链接] [📱 导出采购清单]
+[🛒 Amazon] [⚡ Adafruit] [🔧 SparkFun] [📦 Mouser] [🔬 DigiKey] [📋 Export BOM]
 
 💡 提示：通过我们的链接购买，支持平台发展（联盟营销）
 ```
@@ -250,29 +250,31 @@ Wokwi 仿真器预览 + 演示 GIF
 
 ## 💰 商业模式设计
 
-### 收入结构（现实化预期）
+### 收入结构（海外市场现实化预期）
 
 ```
 主要收入来源：Pro 会员订阅
-- 月费：¥19.9/月
-- 年费：¥199/年（节省 17%）
+- 月费：$9.99/月
+- 年费：$99/年（节省 17%）
 - 核心权益：深度解析文档、高级关卡、AI 助教
 - 月订阅目标：500人
-- 月收入目标：¥10,000
+- 月收入目标：$5,000
 
-次要收入来源：联盟营销（蚊子肉，但聚沙成塔）
-- 淘宝联盟佣金：2-8%
-- 京东联盟佣金：1-5%  
-- 现实预期：单个用户采购 ¥50-200，佣金 ¥2-10
-- 月GMV目标：¥20,000（现实化调整）
-- 预期佣金：¥800-1,600/月
+次要收入来源：海外供应商联盟营销
+- Amazon Associates 佣金：2-8%
+- Adafruit 联盟佣金：3-5%  
+- SparkFun 联盟佣金：2-4%
+- Mouser/DigiKey 佣金：1-3%
+- 现实预期：单个用户采购 $30-100，佣金 $1-5
+- 月GMV目标：$10,000（现实化调整）
+- 预期佣金：$300-500/月
 
 ⚠️ 重要提醒：
 联盟营销不要指望覆盖服务器成本。
 BOM 表格更多是作为"便利工具"来留存用户，而非主要营收手段。
 Pro 订阅才是大头。
 
-预计年收入：¥120,000 - ¥150,000（保守估计）
+预计年收入：$60,000 - $70,000（保守估计）
 ```
 
 ### 成本控制
@@ -284,9 +286,9 @@ Pro 订阅才是大头。
 - 建立用户基础和口碑
 - 完善 Pro 会员权益
 
-阶段 2（6-12个月）：联盟营销优化
+阶段 2（6-12个月）：海外供应商联盟营销优化
 - 优化 BOM 表格的转化率
-- 建立与供应商的联盟关系
+- 建立与海外供应商的联盟关系（Amazon Associates, Adafruit, SparkFun, Mouser, DigiKey）
 - 数据驱动的推荐算法
 
 阶段 3（12个月后）：生态扩展
@@ -415,8 +417,11 @@ export const blueprints = pgTable('blueprints', {
   // BOM 智能表格 (JSON 存储)
   bomData: jsonb('bom_data').$type<BOMItem[]>(),
   affiliateLinks: jsonb('affiliate_links').$type<{
-    taobao?: string
-    jd?: string
+    amazon?: string
+    adafruit?: string
+    sparkfun?: string
+    mouser?: string
+    digikey?: string
     universal?: string // 通用搜索链接，避免空链接
     default?: string   // 默认推荐链接
   }>(),
@@ -453,8 +458,11 @@ interface BOMItem {
   specification: string
   description?: string
   affiliateLinks?: {
-    taobao?: string
-    jd?: string
+    amazon?: string
+    adafruit?: string
+    sparkfun?: string
+    mouser?: string
+    digikey?: string
   }
 }
 ```
@@ -538,12 +546,12 @@ export default defineEventHandler(async (event) => {
 })
 ```
 
-### BOM 智能表格重定向服务
+### BOM 智能表格重定向服务（海外供应商版）
 
 ```typescript
 // server/api/redirect/[platform].get.ts
 export default defineEventHandler(async (event) => {
-  const platform = getRouterParam(event, 'platform') // 'taobao' | 'jd'
+  const platform = getRouterParam(event, 'platform') // 'amazon' | 'adafruit' | 'sparkfun' | 'mouser' | 'digikey'
   const query = getQuery(event)
   const { keyword } = query
   
@@ -563,11 +571,14 @@ export default defineEventHandler(async (event) => {
     })
   }
   
-  // 重定向 URL 规则（可随时更新，无需改数据库）
+  // 重定向 URL 规则（海外供应商）
   const redirectRules = {
-    taobao: `https://s.taobao.com/search?q=${encodeURIComponent(sanitizedKeyword)}`,
-    jd: `https://search.jd.com/Search?keyword=${encodeURIComponent(sanitizedKeyword)}`,
-    universal: `https://www.google.com/search?q=${encodeURIComponent(sanitizedKeyword + ' 购买')}`
+    amazon: `https://www.amazon.com/s?k=${encodeURIComponent(sanitizedKeyword)}&tag=knzn-20`, // 需要申请 Amazon Associates
+    adafruit: `https://www.adafruit.com/search?q=${encodeURIComponent(sanitizedKeyword)}`,
+    sparkfun: `https://www.sparkfun.com/search/results?term=${encodeURIComponent(sanitizedKeyword)}`,
+    mouser: `https://www.mouser.com/c/?q=${encodeURIComponent(sanitizedKeyword)}`,
+    digikey: `https://www.digikey.com/en/products/filter?keywords=${encodeURIComponent(sanitizedKeyword)}`,
+    universal: `https://www.google.com/search?q=${encodeURIComponent(sanitizedKeyword + ' electronics components buy')}`
   }
   
   const redirectUrl = redirectRules[platform]
@@ -631,7 +642,7 @@ const handleBOMSearch = (platform: string, keyword: string) => {
 
 ### Phase 2: 商业化功能（第5-8周）
 - [ ] Pro 会员内容系统
-- [ ] 联盟营销链接生成
+- [ ] 海外供应商联盟营销链接生成
 - [ ] 用户评价系统
 - [ ] Wokwi 集成优化
 
@@ -649,9 +660,9 @@ const handleBOMSearch = (platform: string, keyword: string) => {
 | 月活跃用户 | 1000+ | 每月 |
 | Wokwi 克隆转化率 | 15% | 每周 |
 | Pro 会员转化率 | 5% | 每周 |
-| 联盟营销 GMV | ¥20,000+ | 每月 |
+| 海外供应商联盟 GMV | $10,000+ | 每月 |
 | 用户满意度 | 4.5+ ⭐ | 每月 |
-| 月收入 | ¥10,000+ | 每月 |
+| 月收入 | $5,000+ | 每月 |
 
 ---
 

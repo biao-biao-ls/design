@@ -188,21 +188,29 @@ const RECOMMENDATION = {
 }
 ```
 
-### FR-007: 设置与订阅管理
-**描述**: 用户偏好设置及账户订阅状态管理，使用 Lemon Squeezy 托管支付
+### FR-007: 设置与订阅管理（海外市场版）
+**描述**: 用户偏好设置及账户订阅状态管理，使用 Lemon Squeezy 托管支付，针对海外市场优化
 
 ```javascript
 const USER_SETTINGS = {
   account: {
     avatar: 'upload / generate',
-    email: 'change_email',
-    password: 'reset_password'
+    email: 'change_email', // 海外主要登录方式
+    password: 'reset_password',
+    magicLink: 'enable_magic_link_login' // 海外用户偏好
   },
   
   preferences: {
     theme: ['cyberpunk_dark', 'matrix_green'],
     sound: { master: 80, sfx: 100, music: 50 },
-    language: ['zh-CN', 'en-US']
+    language: ['en-US', 'zh-CN'], // 英文优先
+    timezone: 'auto-detect', // 海外必需功能
+    emailNotifications: {
+      courseProgress: true,
+      certificates: true,
+      communityUpdates: false,
+      marketing: false // GDPR 合规：默认关闭
+    }
   },
 
   subscription: {
@@ -210,20 +218,42 @@ const USER_SETTINGS = {
       type: 'PRO_MONTHLY',
       status: 'active',
       nextBillingDate: '2025-02-20',
-      amount: '$9.99'
+      amount: '$9.99', // 海外定价
+      currency: 'USD'
     },
     actions: [
       { 
-        label: '升级订阅', 
+        label: 'Upgrade Subscription', 
         action: 'redirect-to-lemon-squeezy',
         url: 'https://knzn.lemonsqueezy.com/checkout/premium'
       },
       { 
-        label: '管理订阅', 
+        label: 'Manage Billing', 
         action: 'redirect-to-lemon-squeezy-portal',
         url: 'https://knzn.lemonsqueezy.com/billing'
+      },
+      {
+        label: 'Cancel Subscription',
+        action: 'cancel-subscription',
+        confirmationRequired: true
       }
     ]
+  },
+  
+  // GDPR 合规功能
+  privacy: {
+    dataExport: {
+      label: 'Export My Data',
+      action: 'request-data-export',
+      description: 'Download all your data (GDPR Article 20)'
+    },
+    dataDelete: {
+      label: 'Delete Account',
+      action: 'request-account-deletion',
+      description: 'Permanently delete your account (GDPR Article 17)',
+      confirmationRequired: true,
+      gracePeriod: 30 // 30 天恢复期
+    }
   }
 }
 ```
@@ -358,15 +388,23 @@ app.post('/webhook/lemon-squeezy', (req, res) => {
 - 支持多种支付方式
 - 你只需要处理 webhook 回调
 
-#### Supabase 连接池优化策略
+#### PostgreSQL + Drizzle 连接池优化策略
 
 ```javascript
-const SUPABASE_CONFIG = {
-  // 连接池配置
+const DATABASE_CONFIG = {
+  // PostgreSQL 连接池配置
   connectionPool: {
-    mode: 'transaction',
-    maxConnections: 15,
-    idleTimeout: 30000,
+    host: process.env.DATABASE_HOST,
+    port: 5432,
+    database: process.env.DATABASE_NAME,
+    user: process.env.DATABASE_USER,
+    password: process.env.DATABASE_PASSWORD,
+    
+    // 连接池设置
+    max: 15, // 最大连接数
+    min: 2,  // 最小连接数
+    idle: 30000, // 空闲超时 30s
+    acquire: 60000, // 获取连接超时 60s
     
     monitoring: {
       enabled: true,
@@ -381,9 +419,9 @@ const SUPABASE_CONFIG = {
     batchSize: 100,
     
     caching: {
-      userProgress: 300,
-      leaderboard: 3600,
-      blueprints: 86400
+      userProgress: 300, // 5分钟缓存
+      leaderboard: 3600, // 1小时缓存
+      blueprints: 86400  // 24小时缓存
     },
     
     connectionReuse: {
@@ -401,12 +439,12 @@ const SUPABASE_CONFIG = {
     readOnlyMode: {
       trigger: 'connection_limit_exceeded',
       allowedOperations: ['SELECT'],
-      userMessage: '系统繁忙，暂时只能查看数据'
+      userMessage: 'System busy, read-only mode active'
     }
   }
 }
 
-class SupabaseConnectionMonitor {
+class DatabaseConnectionMonitor {
   constructor() {
     this.activeConnections = 0;
     this.connectionQueue = [];
@@ -414,17 +452,18 @@ class SupabaseConnectionMonitor {
   }
   
   async executeQuery(query, params) {
-    if (this.activeConnections >= SUPABASE_CONFIG.connectionPool.maxConnections) {
+    if (this.activeConnections >= DATABASE_CONFIG.connectionPool.max) {
       return this.queueQuery(query, params);
     }
     
     this.activeConnections++;
     
     try {
-      const result = await supabase.from(query.table).select(query.select);
+      // 使用 Drizzle ORM 执行查询
+      const result = await db.select().from(query.table).where(query.conditions);
       return result;
     } catch (error) {
-      console.error('Supabase query failed:', error);
+      console.error('Database query failed:', error);
       throw error;
     } finally {
       this.activeConnections--;
@@ -436,7 +475,7 @@ class SupabaseConnectionMonitor {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Query timeout in queue'));
-      }, SUPABASE_CONFIG.fallback.queueTimeout);
+      }, DATABASE_CONFIG.fallback.queueTimeout);
       
       this.connectionQueue.push({
         query,
@@ -450,7 +489,7 @@ class SupabaseConnectionMonitor {
   
   processQueue() {
     if (this.connectionQueue.length > 0 && 
-        this.activeConnections < SUPABASE_CONFIG.connectionPool.maxConnections) {
+        this.activeConnections < DATABASE_CONFIG.connectionPool.max) {
       const { query, params, resolve, reject, timeout } = this.connectionQueue.shift();
       clearTimeout(timeout);
       
@@ -460,6 +499,7 @@ class SupabaseConnectionMonitor {
     }
   }
 }
+```
 ```
 
 #### 排行榜缓存策略

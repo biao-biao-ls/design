@@ -105,7 +105,7 @@
 │ 选择证书样式：                         │
 │ ⦿ 简约版（免费）                      │
 │ ⦿ 精美版（Pro 会员）                  │
-│ ⦿ 定制版（¥19.9）                     │
+│ ⦿ 定制版（$9.99）                     │
 │                                        │
 │ [预览证书] [下载 PDF] [分享链接]      │
 │                                        │
@@ -154,7 +154,140 @@ const generateCertificate = (userData, badgeData) => {
 };
 ```
 
-### 2. 自动认证系统 + 防作弊机制
+### LinkedIn 认证集成（海外核心功能）
+
+```javascript
+// LinkedIn 证书集成 API
+const LINKEDIN_INTEGRATION = {
+  // LinkedIn Learning Certificate API
+  certificateAPI: {
+    enabled: true,
+    
+    // 添加证书到 LinkedIn Profile
+    addToProfile: async (certificateData) => {
+      const linkedinData = {
+        name: `KNZN ${certificateData.badgeType} Certification`,
+        organization: 'KNZN Hardware Learning Platform',
+        issueDate: certificateData.issuedAt,
+        credentialId: certificateData.id,
+        credentialUrl: `https://knzn.net/c/${certificateData.id}`,
+        
+        // 技能标签（LinkedIn 会自动识别）
+        skills: getSkillsFromBadge(certificateData.badgeType)
+      }
+      
+      // 生成 LinkedIn 分享链接
+      const shareUrl = `https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME&name=${encodeURIComponent(linkedinData.name)}&organizationName=${encodeURIComponent(linkedinData.organization)}&issueYear=${new Date(linkedinData.issueDate).getFullYear()}&issueMonth=${new Date(linkedinData.issueDate).getMonth() + 1}&certUrl=${encodeURIComponent(linkedinData.credentialUrl)}&certId=${linkedinData.credentialId}`
+      
+      return shareUrl
+    }
+  },
+  
+  // 技能映射
+  skillMapping: {
+    'arduino-beginner': ['Arduino', 'Embedded Systems', 'IoT', 'C++', 'Hardware Programming'],
+    'pcb-beginner': ['PCB Design', 'Electronic Design', 'Circuit Design', 'Hardware Engineering'],
+    'helper': ['Technical Mentoring', 'Community Building', 'Knowledge Sharing'],
+    'simulation-master': ['Circuit Simulation', 'Wokwi', 'Virtual Prototyping']
+  },
+  
+  // 证书描述模板
+  descriptionTemplates: {
+    'arduino-beginner': 'Completed comprehensive Arduino programming course including GPIO control, sensor integration, and embedded systems fundamentals.',
+    'pcb-beginner': 'Mastered PCB design principles, component selection, and circuit layout optimization through hands-on projects.',
+    'helper': 'Demonstrated expertise in technical mentoring by providing high-quality answers and guidance to community members.',
+    'simulation-master': 'Achieved mastery in circuit simulation and virtual prototyping using advanced simulation tools.'
+  }
+}
+
+// 前端 LinkedIn 分享组件
+// components/LinkedInCertificateShare.vue
+<template>
+  <div class="linkedin-share">
+    <h3>🎓 Add to LinkedIn Profile</h3>
+    <p>Showcase your achievement to professional network</p>
+    
+    <div class="certificate-preview">
+      <div class="cert-info">
+        <h4>{{ certificateName }}</h4>
+        <p>Issued by KNZN Hardware Learning Platform</p>
+        <p>Credential ID: {{ certificateId }}</p>
+      </div>
+      
+      <div class="skills-tags">
+        <span v-for="skill in skills" :key="skill" class="skill-tag">
+          {{ skill }}
+        </span>
+      </div>
+    </div>
+    
+    <div class="share-actions">
+      <button @click="addToLinkedIn" class="linkedin-btn">
+        <LinkedInIcon />
+        Add to LinkedIn Profile
+      </button>
+      
+      <button @click="copyCredentialUrl" class="copy-btn">
+        📋 Copy Credential URL
+      </button>
+    </div>
+    
+    <div class="pro-upgrade" v-if="!isProUser">
+      <p>💎 LinkedIn integration is a Pro feature</p>
+      <button @click="upgradeToPro">Upgrade to Pro</button>
+    </div>
+  </div>
+</template>
+
+<script setup>
+const props = defineProps(['certificateId', 'badgeType'])
+
+const certificateName = computed(() => {
+  return LINKEDIN_INTEGRATION.descriptionTemplates[props.badgeType] || 'KNZN Hardware Learning Certificate'
+})
+
+const skills = computed(() => {
+  return LINKEDIN_INTEGRATION.skillMapping[props.badgeType] || []
+})
+
+const addToLinkedIn = async () => {
+  if (!isProUser.value) {
+    showUpgradeModal()
+    return
+  }
+  
+  try {
+    const shareUrl = await LINKEDIN_INTEGRATION.certificateAPI.addToProfile({
+      id: props.certificateId,
+      badgeType: props.badgeType,
+      issuedAt: new Date()
+    })
+    
+    // 在新窗口打开 LinkedIn
+    window.open(shareUrl, '_blank', 'width=600,height=600')
+    
+    // 记录分享事件
+    await $fetch('/api/analytics/certificate-shared', {
+      method: 'POST',
+      body: {
+        certificateId: props.certificateId,
+        platform: 'linkedin'
+      }
+    })
+    
+  } catch (error) {
+    console.error('LinkedIn sharing failed:', error)
+    showErrorMessage('Failed to share to LinkedIn')
+  }
+}
+
+const copyCredentialUrl = () => {
+  const url = `https://knzn.net/c/${props.certificateId}`
+  navigator.clipboard.writeText(url)
+  showSuccessMessage('Credential URL copied to clipboard')
+}
+</script>
+```
 
 ```javascript
 // 自动检查用户是否满足徽章条件
@@ -444,41 +577,45 @@ async function checkUserHasBadge(userId: string, badgeType: string) {
 }
 ```
 
-## 💰 变现模式
+## 💰 变现模式（海外市场版）
 
 ### 证书相关收费
 
 ```
 📜 证书服务
 ├─ 电子版证书：免费
-├─ 高清 PDF 下载：Pro 会员（¥19.9/月）
-├─ 定制证书样式：¥19.9/次
-└─ LinkedIn 认证展示：Pro 会员功能
+├─ 高清 PDF 下载：Pro 会员（$9.99/月）
+├─ 定制证书样式：$9.99/次
+└─ LinkedIn 认证展示：Pro 会员功能 ⭐ 海外核心功能
 
 🎖️ 徽章展示
 ├─ 基础徽章：免费
 ├─ 金边特效徽章：Pro 会员
 ├─ 个人主页徽章墙：Pro 会员
-└─ 徽章分享卡片：Pro 会员
+├─ 徽章分享卡片：Pro 会员
+└─ LinkedIn 技能认证：Pro 会员 ⭐ 海外重点
 
 📊 数据服务  
 ├─ 学习进度报告：Pro 会员
 ├─ 技能雷达图：Pro 会员
-└─ 年度学习总结：Pro 会员
+├─ 年度学习总结：Pro 会员
+└─ 职业发展建议：Pro 会员 ⭐ 海外新增
 ```
 
-### 预期收入
+### 预期收入（海外市场）
 
 ```
 月度收入预估：
-├─ Pro 会员：100 人 × ¥19.9 = ¥1,990
-├─ 定制证书：20 次 × ¥19.9 = ¥398  
-└─ 总计：约 ¥2,400/月
+├─ Pro 会员：100 人 × $9.99 = $999
+├─ 定制证书：20 次 × $9.99 = $199.8  
+└─ 总计：约 $1,200/月
 
 成本：
-├─ 服务器：¥200/月
-├─ 人工审核：¥500/月（每天 10 分钟）
-└─ 净利润：¥1,700/月
+├─ 服务器：$50/月
+├─ 人工审核：$200/月（每天 10 分钟）
+└─ 净利润：$950/月
+
+年收入预估：$11,400 - $14,400
 ```
 
 ## 🚀 MVP 开发计划
