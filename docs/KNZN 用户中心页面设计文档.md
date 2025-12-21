@@ -1,4 +1,4 @@
-# 🎮 KNZN 用户中心页面 (User Dashboard) 简化设计文档 v2.0
+# 🎮 KNZN 用户中心页面设计文档
 
 ## 📋 文档概述
 
@@ -6,19 +6,14 @@
 **页面名称**: 用户中心 (User Dashboard / Profile Center)  
 **路由**: `/dashboard` 或 `/user/profile`  
 **用户状态**: 已登录用户  
-**文档版本**: v2.0（MVP 简化版 - 高性价比实现）  
-**最后更新**: 2025-12-21  
-**审核状态**: ✅ 可交付高级工程师进行开发  
-**文档类型**: 生产级设计规范（零歧义）  
-**设计理念**: 从"社交电商后台"简化为"个人成就展示柜"
+**文档版本**: v2.0  
+**最后更新**: 2024-12-22  
+**审核状态**: ✅ 生产就绪版本  
+**文档类型**: 完整设计规范
 
----
+## 🎯 页面定位与价值主张
 
-## 🎯 第一部分：产品需求文档 (PRD)
-
-### 1.1 页面定位与价值主张
-
-#### 核心定位
+### 核心定位
 用户中心是**学习成就的展示柜**和**下一步学习的决策枢纽**。专注于个人进度展示，避免复杂的社交功能。
 
 用户在这里可以：
@@ -27,32 +22,42 @@
 - 🎯 获得 AI 驱动的个性化学习建议
 - 📊 查看全站排行榜（仅此而已，无需加好友）
 - 📦 管理虚拟硬件库存，为 Sector 04 (物质化) 做准备
+- 🎨 **生成和分享炫酷的成就卡片**
 
-#### 设计哲学 (简化版)
+### 设计哲学
 - **一页掌握**: 所有重要信息在首屏可见（无需下滑）
 - **即时反馈**: 完成关卡后 3 秒内，中心页自动更新
 - **成就感驱动**: 每个成就都有视觉庆祝（动画、声音、徽章闪光）
 - **排名激励**: 简单的排行榜系统激发竞争欲望（无需复杂社交）
 - **个性化驱动**: AI 推荐下一个技能，避免选择疲劳
+- **分享导向**: 让用户愿意炫耀自己的学习成果
 
-#### 🚫 明确砍掉的功能
-- ❌ 好友系统（加好友、私信、在线状态）
-- ❌ 实时社交（双向关注、好友动态）
-- ❌ 复杂挑战系统（P2P 对战、邀请机制）
-- ❌ 3D 车库预览（改为 2D 分层图片点亮）
-- ❌ 原生支付集成（改为 Lemon Squeezy 托管）
+### 用户画像分层策略
 
----
+**学习者 (Learners) - 70%**
+- 特征：想要掌握硬件技能，关注学习进度
+- 需求：清晰的学习路径、即时反馈、成就感
+- 设计重点：进度可视化、技能雷达图、个性化推荐
 
-### 1.2 核心功能需求 (Functional Requirements) - 简化版
+**炫耀者 (Showcasers) - 20%**
+- 特征：喜欢展示自己的成就和作品
+- 需求：精美的成就展示、分享功能、社交认可
+- 设计重点：成就墙、分享卡片生成、排行榜展示
 
-#### FR-001: 个人资料卡
+**收集者 (Collectors) - 10%**
+- 特征：喜欢收集徽章、解锁成就、完成挑战
+- 需求：丰富的收集要素、稀有度系统、完成度追踪
+- 设计重点：徽章系统、收集进度、稀有成就
+
+## 🎯 核心功能需求
+
+### FR-001: 个人资料卡
 **描述**: 展示用户基础信息、等级、XP 和当前头衔
 
 ```javascript
 const PROFILE_CARD = {
   user: {
-    avatar: 'generated_pixel_avatar', // AI 生成像素头像
+    avatar: 'generated_pixel_avatar',
     username: 'CyberEngineer_007',
     joinDate: '2024-01-15',
     title: 'Level 5 Wireman'
@@ -73,8 +78,8 @@ const PROFILE_CARD = {
 }
 ```
 
-#### FR-002: 技能雷达图 ✅ 移动端适配版
-**描述**: 展示用户在 6 个核心维度的能力值
+### FR-002: 技能雷达图
+**描述**: 展示用户在 6 个核心维度的能力值，移动端自动降级为水平条形图
 
 **桌面端**: 6D 雷达图  
 **移动端**: 自动降级为水平条形图（避免文字重叠）
@@ -92,21 +97,21 @@ const RADAR_CHART_CONFIG = {
   
   mobileFallback: {
     enabled: true,
-    triggerWidth: 480, // px
+    triggerWidth: 480,
     type: 'horizontal-bar-chart'
   }
 }
 ```
 
-#### FR-003: 成就与徽章墙
+### FR-003: 成就与徽章墙
 **描述**: 展示已获得的徽章，以及最近解锁的成就
 
 **展示逻辑**:
 - 最近获得: 顶部高亮显示最近 3 个徽章
 - 稀有度特效: Common / Rare / Epic / Legendary
 
-#### FR-004: 排行榜系统 ✅ 简化版（无社交）
-**描述**: 显示用户的全球排名，**砍掉好友系统和复杂挑战**
+### FR-004: 排行榜系统
+**描述**: 显示用户的全球排名，无社交功能
 
 ```javascript
 const LEADERBOARD_SIMPLE = {
@@ -119,29 +124,23 @@ const LEADERBOARD_SIMPLE = {
     },
     
     leaderboard: {
-      tabs: ['全球', '本月', '本周'], // 砍掉"好友"标签
-      display: 'top-50', // 只显示前50名
-      updateFrequency: 'daily' // 每天更新一次，不需要实时
+      tabs: ['全球', '本月', '本周'],
+      display: 'top-50',
+      updateFrequency: 'daily'
     }
   }
 }
 ```
 
-**🚫 砍掉的功能**:
-- ❌ friendsRanking: 好友排名
-- ❌ challengeSystem: 挑战系统
-- ❌ socialFeatures: 社交功能
-
-#### FR-005: 库存与车库系统 ✅ 2D 简化版
-**描述**: 展示用户在关卡中获得的虚拟硬件模块，**用 2D 分层图片代替 3D 模型**
+### FR-005: 库存与车库系统
+**描述**: 展示用户在关卡中获得的虚拟硬件模块，用 2D 分层图片展示
 
 ```javascript
 const GARAGE_PREVIEW_2D = {
   visual: {
-    type: '2d-layered-illustration', // 2D 分层图片，不是 3D
-    baseImage: '/images/garage/car-wireframe-base.png', // 底图：暗色线框车
+    type: '2d-layered-illustration',
+    baseImage: '/images/garage/car-wireframe-base.png',
     
-    // 零件分层图片
     partLayers: [
       {
         id: 'chassis',
@@ -153,11 +152,10 @@ const GARAGE_PREVIEW_2D = {
         id: 'engine',
         image: '/images/garage/engine-glow.png',
         unlocked: false,
-        grayscale: true // 未解锁时灰度显示
+        grayscale: true
       }
     ],
     
-    // CSS 动画效果
     animations: {
       onPartUnlock: {
         effect: 'filter: grayscale(0%) + glow-animation',
@@ -174,12 +172,7 @@ const GARAGE_PREVIEW_2D = {
 }
 ```
 
-**🚫 砍掉的功能**:
-- ❌ 3D 线框全息投影
-- ❌ Three.js 渲染管线
-- ❌ 复杂的 WebGL 动画
-
-#### FR-006: AI 学习推荐
+### FR-006: AI 学习推荐
 **描述**: 根据用户的雷达图短板和历史表现，推荐下一个任务
 
 ```javascript
@@ -195,8 +188,8 @@ const RECOMMENDATION = {
 }
 ```
 
-#### FR-007: 设置与订阅管理 ✅ Lemon Squeezy 托管版
-**描述**: 用户偏好设置及账户订阅状态管理，**使用第三方支付托管**
+### FR-007: 设置与订阅管理
+**描述**: 用户偏好设置及账户订阅状态管理，使用 Lemon Squeezy 托管支付
 
 ```javascript
 const USER_SETTINGS = {
@@ -212,7 +205,6 @@ const USER_SETTINGS = {
     language: ['zh-CN', 'en-US']
   },
 
-  // ⭐ 简化版: 订阅管理（Lemon Squeezy 托管）
   subscription: {
     currentPlan: {
       type: 'PRO_MONTHLY',
@@ -236,17 +228,9 @@ const USER_SETTINGS = {
 }
 ```
 
-**🚫 砍掉的功能**:
-- ❌ 原生支付方式绑定
-- ❌ 发票下载系统
-- ❌ 复杂的订阅周期管理
-- ❌ 退款逻辑处理
+## 🎨 设计规范
 
----
-
-## 🎨 第二部分：设计规范 (Design Specification) - 简化版
-
-### 2.1 布局与响应式
+### 布局与响应式
 
 #### 桌面端 (Desktop > 1024px)
 **三栏布局**:
@@ -262,13 +246,13 @@ const USER_SETTINGS = {
 4. 技能条形图 (雷达图降级)
 5. 折叠的菜单 (成就、排行榜、设置)
 
-### 2.2 视觉风格
+### 视觉风格
 
 - **车库预览**: 使用精美 2D 插画/GIF，营造赛博风格。未解锁部分使用 CSS Filter: Grayscale。
 - **雷达图**: 动态生长动画，背景有同心圆网格呼吸效果。移动端降级为条形图。
 - **卡片质感**: 玻璃拟态 (Glassmorphism) + 霓虹边框 (Neon Border)。
 
-### 2.3 色彩系统
+### 色彩系统
 
 ```css
 :root {
@@ -282,11 +266,9 @@ const USER_SETTINGS = {
 }
 ```
 
----
+## 🛠️ 技术实现指南
 
-## 🛠️ 第三部分：技术实现指南 - 简化版
-
-### 3.1 目录结构建议
+### 目录结构建议
 
 ```
 src/
@@ -305,7 +287,7 @@ src/
 │   └── useSubscription.ts           # Lemon Squeezy 集成
 ```
 
-### 3.2 开发优先级 (Phasing) - 简化版
+### 开发优先级
 
 **P0 - 核心闭环 (MVP 必需) - Week 1**:
 - FR-001: 基础布局 + 个人资料
@@ -324,9 +306,9 @@ src/
 
 **总工期**: 约 2-3 周
 
-### 3.3 关键技术决策
+### 关键技术决策
 
-#### 3.3.1 2D 车库实现方案
+#### 2D 车库实现方案
 
 ```css
 .garage-container {
@@ -353,7 +335,7 @@ src/
 - 美术资源制作成本低（找画师或 AI 生成）
 - 无需 WebGL 兼容性考虑
 
-#### 3.3.2 Lemon Squeezy 集成
+#### Lemon Squeezy 集成
 
 ```javascript
 // 用户点击升级
@@ -376,7 +358,111 @@ app.post('/webhook/lemon-squeezy', (req, res) => {
 - 支持多种支付方式
 - 你只需要处理 webhook 回调
 
-#### 3.3.3 排行榜缓存策略
+#### Supabase 连接池优化策略
+
+```javascript
+const SUPABASE_CONFIG = {
+  // 连接池配置
+  connectionPool: {
+    mode: 'transaction',
+    maxConnections: 15,
+    idleTimeout: 30000,
+    
+    monitoring: {
+      enabled: true,
+      alertThreshold: 12,
+      logSlowQueries: true,
+      slowQueryThreshold: 1000
+    }
+  },
+  
+  queryOptimization: {
+    batchInserts: true,
+    batchSize: 100,
+    
+    caching: {
+      userProgress: 300,
+      leaderboard: 3600,
+      blueprints: 86400
+    },
+    
+    connectionReuse: {
+      enabled: true,
+      maxReuse: 100,
+      reuseTimeout: 60000
+    }
+  },
+  
+  fallback: {
+    onConnectionLimit: 'queue-requests',
+    queueTimeout: 5000,
+    maxQueueSize: 50,
+    
+    readOnlyMode: {
+      trigger: 'connection_limit_exceeded',
+      allowedOperations: ['SELECT'],
+      userMessage: '系统繁忙，暂时只能查看数据'
+    }
+  }
+}
+
+class SupabaseConnectionMonitor {
+  constructor() {
+    this.activeConnections = 0;
+    this.connectionQueue = [];
+    this.isMonitoring = true;
+  }
+  
+  async executeQuery(query, params) {
+    if (this.activeConnections >= SUPABASE_CONFIG.connectionPool.maxConnections) {
+      return this.queueQuery(query, params);
+    }
+    
+    this.activeConnections++;
+    
+    try {
+      const result = await supabase.from(query.table).select(query.select);
+      return result;
+    } catch (error) {
+      console.error('Supabase query failed:', error);
+      throw error;
+    } finally {
+      this.activeConnections--;
+      this.processQueue();
+    }
+  }
+  
+  queueQuery(query, params) {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Query timeout in queue'));
+      }, SUPABASE_CONFIG.fallback.queueTimeout);
+      
+      this.connectionQueue.push({
+        query,
+        params,
+        resolve,
+        reject,
+        timeout
+      });
+    });
+  }
+  
+  processQueue() {
+    if (this.connectionQueue.length > 0 && 
+        this.activeConnections < SUPABASE_CONFIG.connectionPool.maxConnections) {
+      const { query, params, resolve, reject, timeout } = this.connectionQueue.shift();
+      clearTimeout(timeout);
+      
+      this.executeQuery(query, params)
+        .then(resolve)
+        .catch(reject);
+    }
+  }
+}
+```
+
+#### 排行榜缓存策略
 
 ```javascript
 // 后端定时任务（每天凌晨）
@@ -396,7 +482,7 @@ const getLeaderboard = async () => {
 - 每天更新一次足够了（学习平台不需要实时排名）
 - Redis ZSET 天然支持排序
 
-### 3.4 性能优化策略
+### 性能优化策略
 
 #### 图片资源优化
 - 车库底图: WebP 格式，< 100KB
@@ -408,7 +494,7 @@ const getLeaderboard = async () => {
 - 用户数据: 首屏必需数据优先加载
 - 成就数据: 懒加载，按需获取
 
-### 3.5 API 端点 - 简化版
+### API 端点
 
 ```
 GET  /api/user/profile              # 获取用户基本信息
@@ -429,9 +515,7 @@ POST /webhook/lemon-squeezy         # 处理支付回调
 GET  /api/subscription/status       # 获取订阅状态
 ```
 
----
-
-## ✅ 质检清单 - 简化版
+## ✅ 质检清单
 
 ### 功能验证
 - [ ] 个人资料卡正确加载并实时更新
@@ -455,42 +539,7 @@ GET  /api/subscription/status       # 获取订阅状态
 
 ---
 
-## 📊 简化前后对比
-
-| 功能模块 | 原文档要求 (高成本) | 修改后 MVP 方案 (高性价比) | 节省工时 |
-|---------|-------------------|------------------------|---------|
-| 社交系统 | 完整的好友、私信、在线状态 | 排行榜 (Leaderboard) 仅此而已 | 2-3 周 |
-| 车库预览 | 3D 全息互动模型、实时渲染 | 精美 2D 插画 / GIF | 1-2 周 |
-| 支付系统 | 原生对接、发票管理、订阅周期 | Lemon Squeezy 托管 | 2-3 周 |
-| 雷达图 | 复杂的动态 ECharts 配置 | CSS + SVG 简单绘制 | 3-5 天 |
-| 设置页 | 极其详细的隐私、通知设置 | 极简设置（改密码、改头像、绑定邮箱） | 1 周 |
-
-**总节省工时**: 约 6-10 周 → 2-3 周
-
----
-
-## 🚀 实施建议
-
-### 立即开始
-1. 搭建基础布局和个人资料卡
-2. 实现 2D 车库预览（找画师或 AI 生成素材）
-3. 集成 Lemon Squeezy（注册账号，配置 webhook）
-
-### 近期完成
-4. 实现排行榜系统（Redis 缓存）
-5. 实现技能雷达图（桌面端）和条形图（移动端）
-6. 实现 AI 推荐系统（初期可以硬编码规则）
-
-### 后续优化
-7. 完善成就系统
-8. 移动端体验优化
-9. 性能监控和优化
-
----
-
-**文档版本**: v2.0 (简化版)  
-**编制时间**: 2025-12-21  
-**审核状态**: ✅ 生产级规范（高性价比实现）  
-**交付对象**: 高级前端工程师
-
-这个简化版本将开发周期从 2-3 个月缩短到 2-3 周，而且用户体验更聚焦于学习激励，避免了复杂社交功能的技术债务。
+**文档版本**: v2.0  
+**编制时间**: 2024-12-22  
+**审核状态**: ✅ 生产就绪版本  
+**交付对象**: 开发团队

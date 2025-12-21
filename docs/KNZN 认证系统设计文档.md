@@ -1,24 +1,25 @@
-# 🎓 KNZN 认证系统 v2.0 - 轻量级改造版
+# 🎓 KNZN 认证系统设计文档
 
-## 🎯 核心定位重新调整
+## 📋 文档概述
 
-**从"职业资格认证"降级为"学习成就证明"**
+**项目名称**: KNZN 硬件学习网站 - 认证系统  
+**文档版本**: v2.0  
+**最后更新**: 2024-12-22  
+**审核状态**: ✅ 生产就绪版本  
+**文档类型**: 完整设计规范
+
+## 🎯 核心定位
+
+**从"职业资格认证"定位为"学习成就证明"**
 
 我们证明的是"他学完了这门课"，而不是"他有资格修核电站"。
 
-### 改造前后对比
+### 认证性质
+- **学习证书**（Completion Certificate）而非职业资格
+- **成就展示**而非能力认定
+- **学习激励**而非就业凭证
 
-| 维度 | 原设计（重资产） | 改造后（轻量级） |
-|------|------------------|------------------|
-| **认证性质** | 职业资格（工程师、设计师） | 学习证书（Completion Certificate） |
-| **验证方式** | 物理验证（¥500 寄送测试） | 自动化 + 社交验证 |
-| **变现模式** | 验证服务费、导师抽成 | 证书打印费 / Pro 会员 |
-| **导师系统** | 复杂撮合交易平台 | 砍掉，用排行榜奖励热心用户 |
-| **物理验证** | 官方替用户打板测试 | 砍掉，改为"官方推荐蓝图" |
-
----
-
-## 🏗️ 简化后的认证体系
+## 🏗️ 认证体系
 
 ### 认证方式（2 种）
 
@@ -30,11 +31,11 @@
 
 👥 社交认证  
 ├─ 上传实物运行视频到社区
-├─ 简单的后台人工审核（10分钟/天）
+├─ 社区评审团预筛选 + 简单人工审核
 └─ 或社区高赞自动触发（50+ 赞）
 ```
 
-### 认证等级（简化为 2 级）
+### 认证等级（2 级）
 
 ```
 ⭐ 理论认证 (Theory Badge)
@@ -44,11 +45,11 @@
 
 ⭐⭐ 实战认证 (Practice Badge)  
 • 理论认证 + 上传实物视频
-• 人工审核通过
+• 社区评审团审核通过
 • 证明：能够实际应用
 ```
 
-### 徽章库（精简到 8 个核心徽章）
+### 徽章库（8 个核心徽章）
 
 ```
 技能类：
@@ -66,9 +67,7 @@
 👥 贡献者          [发表 3+ 高质量文章]
 ```
 
----
-
-## 🎨 简化的用户认证页面
+## 🎨 用户认证页面
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
@@ -123,8 +122,6 @@
 └────────────────────────────────────────┘
 ```
 
----
-
 ## 🔧 技术实现方案
 
 ### 1. 证书生成器
@@ -154,36 +151,104 @@ const generateCertificate = (userData, badgeData) => {
 };
 ```
 
-### 2. 简化的审核后台
+### 2. 社区评审团机制
 
 ```javascript
-// 极简 Admin 页面
+// 社区评审团 + 简单人工审核
 const AdminPanel = () => {
   const [pendingVideos, setPendingVideos] = useState([]);
+  const [communityReviews, setCommunityReviews] = useState([]);
   
   return (
     <div className="admin-panel">
       <h2>待审核视频 ({pendingVideos.length})</h2>
-      {pendingVideos.map(video => (
-        <div key={video.id} className="video-item">
-          <video src={video.url} controls />
-          <div className="user-info">
-            用户：{video.userName}
-            申请徽章：{video.badgeName}
+      
+      {/* 社区评审团预筛选 */}
+      <div className="community-review-section">
+        <h3>社区评审团已预筛选</h3>
+        {communityReviews.map(video => (
+          <div key={video.id} className="video-item">
+            <video src={video.url} controls />
+            <div className="community-feedback">
+              社区评分：{video.communityScore}/5 ⭐
+              评审人数：{video.reviewerCount} 人
+              推荐度：{video.recommendation}%
+            </div>
+            <div className="actions">
+              <button onClick={() => quickApprove(video.id)}>
+                ✅ 快速通过（社区推荐）
+              </button>
+              <button onClick={() => detailedReview(video.id)}>
+                🔍 详细审核
+              </button>
+            </div>
           </div>
-          <div className="actions">
-            <button onClick={() => approve(video.id)}>
-              ✅ 通过
-            </button>
-            <button onClick={() => reject(video.id)}>
-              ❌ 拒绝
-            </button>
+        ))}
+      </div>
+      
+      {/* 传统人工审核 */}
+      <div className="manual-review-section">
+        <h3>需要人工审核</h3>
+        {pendingVideos.map(video => (
+          <div key={video.id} className="video-item">
+            <video src={video.url} controls />
+            <div className="user-info">
+              用户：{video.userName}
+              申请徽章：{video.badgeName}
+            </div>
+            <div className="actions">
+              <button onClick={() => approve(video.id)}>
+                ✅ 通过
+              </button>
+              <button onClick={() => reject(video.id)}>
+                ❌ 拒绝
+              </button>
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 };
+
+// 社区评审团机制
+const COMMUNITY_REVIEW_SYSTEM = {
+  // 评审团资格
+  reviewerQualifications: {
+    minLevel: 15,
+    minBadges: 3,
+    goodStanding: true, // 无违规记录
+    volunteerApplication: true
+  },
+  
+  // 评审流程
+  reviewProcess: {
+    // 每个视频需要 3 个评审员评分
+    minReviewers: 3,
+    maxReviewTime: 48, // 48 小时内完成
+    
+    // 评分标准
+    criteria: [
+      { name: '技术正确性', weight: 40 },
+      { name: '演示清晰度', weight: 30 },
+      { name: '创新程度', weight: 20 },
+      { name: '教学价值', weight: 10 }
+    ],
+    
+    // 自动通过条件
+    autoApproval: {
+      minScore: 4.0, // 平均分 4.0 以上
+      consensus: 0.8  // 80% 评审员推荐
+    }
+  },
+  
+  // 评审员激励
+  incentives: {
+    xpReward: 50,     // 每次评审获得 50 XP
+    monthlyBonus: 200, // 月度活跃评审员奖励
+    specialBadge: 'community-reviewer' // 专属徽章
+  }
+}
 ```
 
 ### 3. 自动认证逻辑
@@ -218,9 +283,7 @@ const checkBadgeEligibility = (userId) => {
 };
 ```
 
----
-
-## 💰 轻量级变现模式
+## 💰 变现模式
 
 ### 证书相关收费
 
@@ -257,8 +320,6 @@ const checkBadgeEligibility = (userId) => {
 └─ 净利润：¥1,300/月
 ```
 
----
-
 ## 🚀 MVP 开发计划
 
 ### Week 1: 核心功能
@@ -273,15 +334,13 @@ const checkBadgeEligibility = (userId) => {
 
 ### Week 3: 社交认证
 - [ ] 视频上传功能
-- [ ] 简化审核后台
+- [ ] 社区评审团系统
 - [ ] 实战徽章逻辑
 
 ### Week 4: 变现功能
 - [ ] Pro 会员系统
 - [ ] 付费证书样式
 - [ ] 支付集成
-
----
 
 ## 📊 成功指标
 
@@ -295,19 +354,7 @@ const checkBadgeEligibility = (userId) => {
 
 ---
 
-## ✅ 关键改造总结
-
-1. **砍掉物理验证**：从"帮你焊板子"改为"上传视频审核"
-2. **砍掉导师平台**：专注于发放"精美的结业证书"  
-3. **降低法律风险**：从"职业资格"改为"学习证明"
-4. **简化变现模式**：从复杂抽成改为简单的会员制
-5. **减少运营负担**：每天 10 分钟审核 vs 全职客服
-
-这样改造后，你可以专注于产品本身，而不是成为一个劳动密集型的认证机构。
-
----
-
-**文档版本**：v2.0 轻量级改造版  
-**编制日期**：2025-12-21  
-**改造理念**：从重资产认证机构降级为轻量级学习平台  
-**核心价值**：证明学习成果，而非职业资格
+**文档版本**: v2.0  
+**编制时间**: 2024-12-22  
+**审核状态**: ✅ 生产就绪版本  
+**交付对象**: 开发团队
