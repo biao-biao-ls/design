@@ -6,9 +6,9 @@
 **页面名称**: 关卡场景 (Lesson Scene / Challenge Arena)  
 **路由**: `/lesson/:lessonId` 或 `/challenge/:challengeId`  
 **用户状态**: 已登录用户（从技能地图 `/map` 进入）  
-**文档版本**: v2.0  
+**文档版本**: v3.0  
 **最后更新**: 2024-12-22  
-**审核状态**: ✅ 生产就绪版本  
+**审核状态**: ✅ 最终确定版本  
 **文档类型**: 完整设计规范
 
 ## 🎯 核心设计理念
@@ -16,10 +16,10 @@
 关卡场景页是用户从**被动浏览**转变为**主动挑战**的舞台。用户在技能地图上点击某个节点后，进入这个沉浸式的学习-挑战空间，完成一系列任务来掌握该技能。
 
 ### 设计哲学
-- **模块化学习路径**: 每个关卡分为 3-4 个小环节，避免一次性信息过载
+- **模块化学习路径**: 每个关卡分为 4 个小环节，避免一次性信息过载
 - **即时反馈机制**: 每个操作都有立即的成功/失败反馈
 - **新手友好**: 强制引导确保用户不会在第一步就流失
-- **移动端明确定位**: 作为管理/查看工具，不强行适配复杂交互
+- **深度学习**: 通过故障排查和反思环节，真正理解原理
 
 ## 🎯 核心功能需求
 
@@ -36,12 +36,13 @@ const LESSON_STRUCTURE = {
     title: 'GPIO 基础入门',
     description: '学习如何使用树莓派控制 LED 灯亮灭',
     difficulty: 'BEGINNER',
-    estimatedDuration: 30,
+    estimatedDuration: 35,
     prerequisiteSkills: ['电路基础'],
     learningObjectives: [
       '理解 GPIO 端口的作用',
       '掌握如何配置 GPIO 为输入或输出',
-      '能独立点亮和熄灭一个 LED'
+      '能独立点亮和熄灭一个 LED',
+      '学会调试和故障排查'
     ],
     rewards: {
       xp: 300,
@@ -289,10 +290,11 @@ const PROGRESS_TRACKING = {
     segments: [
       { id: 'phase_1', label: '理论', progress: 100, status: 'completed' },
       { id: 'phase_2', label: '实践', progress: 65, status: 'in-progress' },
-      { id: 'phase_3', label: '挑战', progress: 0, status: 'locked' }
+      { id: 'phase_3', label: '调试', progress: 0, status: 'locked' },
+      { id: 'phase_4', label: '反思', progress: 0, status: 'locked' }
     ],
-    totalProgress: 55,
-    estimatedTimeRemaining: 15
+    totalProgress: 41,
+    estimatedTimeRemaining: 20
   },
 
   performanceMetrics: {
@@ -307,7 +309,7 @@ const PROGRESS_TRACKING = {
       label: '已花时间',
       value: 15,
       unit: 'min',
-      estimatedTotal: 30
+      estimatedTotal: 35
     }
   },
 
@@ -328,9 +330,9 @@ const PROGRESS_TRACKING = {
 }
 ```
 
-### FR-003: Wokwi 仿真器集成与通信监控
+### FR-003: Wokwi 仿真器集成与 X-Ray 透视
 
-**描述**: 使用 Wokwi iframe 集成，包含完善的心跳检测和错误处理机制
+**描述**: 使用 Wokwi iframe 集成，包含完善的心跳检测、X-Ray 透视视图和自定义芯片判题
 
 **Wokwi 集成配置**:
 ```javascript
@@ -348,32 +350,39 @@ const WOKWI_INTEGRATION = {
     position: 'side-panel',
     width: '300px',
     
+    // ⚠️ 性能优化：避免 iframe 通信过载
+    performanceOptimization: {
+      throttleInterval: 100, // 限制更新频率为 100ms
+      maxUpdatesPerSecond: 10,
+      useRequestAnimationFrame: true,
+      
+      // 动画由 CSS 驱动，JS 只负责状态切换
+      animationStrategy: 'css-driven',
+      jsRole: 'state-trigger-only'
+    },
+    
     visualizations: [
       {
         trigger: 'gpio_pin_high',
         animation: 'mos_transistor_on',
         description: 'GPIO 拉高时，MOS 管导通，电流流向 LED',
-        svgPath: '/animations/mos-transistor-on.svg'
+        svgPath: '/animations/mos-transistor-on.svg',
+        // 使用 CSS 类切换而非实时数据传输
+        cssClass: 'transistor-on'
       },
       {
         trigger: 'gpio_pin_low', 
         animation: 'mos_transistor_off',
         description: 'GPIO 拉低时，MOS 管截止，电流被阻断',
-        svgPath: '/animations/mos-transistor-off.svg'
-      },
-      {
-        trigger: 'current_flow',
-        animation: 'electron_flow',
-        description: '电子从负极流向正极，形成电流',
-        svgPath: '/animations/current-flow.svg'
+        svgPath: '/animations/mos-transistor-off.svg',
+        cssClass: 'transistor-off'
       }
     ],
     
-    controls: {
-      playPause: true,
-      speed: { min: 0.5, max: 2.0, default: 1.0 },
-      replay: true
-    }
+    // 节流处理函数
+    throttledUpdate: debounce((state) => {
+      updateXRayVisualization(state);
+    }, 100)
   },
 
   // 心跳检测机制
@@ -443,6 +452,9 @@ const WOKWI_INTEGRATION = {
       if (event.data.type === 'SIMULATION_STATE') {
         const gpio17State = event.data.gpio[17];
         validateLessonProgress(gpio17State);
+        
+        // 节流更新 X-Ray 视图
+        this.xrayVisualizer.throttledUpdate(event.data);
       }
       
       if (event.data.type === 'SERIAL_OUTPUT') {
@@ -547,9 +559,9 @@ const WOKWI_INTEGRATION = {
       diagram: '/wokwi-templates/gpio-led-basic.json',
       code: '/wokwi-templates/gpio-led-basic.py'
     },
-    'sos-morse': {
-      diagram: '/wokwi-templates/sos-morse.json', 
-      code: '/wokwi-templates/sos-morse-starter.py'
+    'debug-challenge': {
+      diagram: '/wokwi-templates/debug-challenge.json', 
+      code: '/wokwi-templates/debug-challenge-buggy.py'
     }
   }
 }
@@ -566,7 +578,7 @@ const ACHIEVEMENT_SYSTEM = {
     {
       id: 'completion',
       name: '完成度',
-      weight: 60,
+      weight: 50,
       thresholds: {
         perfect: { score: 100, badge: 'gpio-master', xp: 300 },
         good: { score: 80, xp: 200 },
@@ -575,13 +587,26 @@ const ACHIEVEMENT_SYSTEM = {
     },
     
     {
-      id: 'speed',
-      name: '速度',
-      weight: 40,
+      id: 'debugging',
+      name: '调试能力',
+      weight: 30,
       bonuses: [
         {
-          condition: 'completed_under_20_minutes',
-          badge: 'speed-learner',
+          condition: 'fixed_all_bugs_without_hints',
+          badge: 'debug-master',
+          xp: 150
+        }
+      ]
+    },
+    
+    {
+      id: 'reflection',
+      name: '反思深度',
+      weight: 20,
+      bonuses: [
+        {
+          condition: 'feynman_log_high_quality',
+          badge: 'deep-thinker',
           xp: 100
         }
       ]
@@ -775,34 +800,40 @@ const AI_TUTOR = {
 ```javascript
 const LAYOUT_SYSTEM = {
   desktop: {
-    layout: 'two-column',
+    layout: 'three-column',
     structure: `
 ┌─────────────────────────────────────────────────────────┐
 │  顶部导航栏 (Progress + Breadcrumb)                      │
 ├─────────────────────────────────────────────────────────┤
-│  任务描述 (30%)        │  Wokwi 仿真器 (70%)            │
-│                        │                                │
-│  • 当前步骤            │  ┌─────────────────────────────┐ │
-│  • 学习目标            │  │                             │ │
-│  • 提示信息            │  │    Wokwi iframe             │ │
-│  • AI 助教按钮         │  │                             │ │
-│                        │  └─────────────────────────────┘ │
-│                        │                                │
-│  [可折叠]              │  [运行代码] [重置] [提示]       │
-└────────────────────────┴────────────────────────────────┘
+│  任务描述 (25%)  │  Wokwi 仿真器 (50%)  │ X-Ray 视图 (25%) │
+│                  │                      │                  │
+│  • 当前步骤      │  ┌─────────────────┐  │ ┌──────────────┐ │
+│  • 学习目标      │  │                 │  │ │              │ │
+│  • 提示信息      │  │   Wokwi iframe  │  │ │ SVG 动画     │ │
+│  • AI 助教按钮   │  │                 │  │ │ 原理可视化   │ │
+│                  │  └─────────────────┘  │ │              │ │
+│  [可折叠]        │                      │ └──────────────┘ │
+│                  │  [运行] [重置] [提示] │                  │
+└──────────────────┴──────────────────────┴──────────────────┘
     `,
     
     components: {
       taskPanel: {
-        width: '30%',
-        minWidth: '300px',
+        width: '25%',
+        minWidth: '250px',
         collapsible: true,
         position: 'left'
       },
       
       simulatorPanel: {
-        width: '70%',
+        width: '50%',
         content: 'wokwi-iframe',
+        position: 'center'
+      },
+      
+      xrayPanel: {
+        width: '25%',
+        content: 'svg-animations',
         position: 'right'
       }
     }
@@ -926,23 +957,23 @@ const PERSISTENCE_SYSTEM = {
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │ 顶部导航栏                                                       │
-│ [返回] [当前关卡: GPIO 基础] [进度: 2/3] [XP: 300]             │
+│ [返回] [当前关卡: GPIO 基础] [进度: 2/4] [XP: 300]             │
 └─────────────────────────────────────────────────────────────────┘
 
-┌──────────────────────┬────────────────────────────────────────────┐
-│                      │                                            │
-│   任务描述 (30%)     │   Wokwi 仿真器 (70%)                      │
-│                      │                                            │
-│  • 当前步骤          │  ┌───────────────────────────────────────┐ │
-│  • 学习目标          │  │                                        │ │
-│  • 代码模板          │  │    Wokwi iframe                       │ │
-│  • 提示信息          │  │    (包含代码编辑器和电路仿真)          │ │
-│                      │  │                                        │ │
-│  [🤖 AI 助教]       │  └───────────────────────────────────────┘ │
-│  [💡 提示]          │                                            │
-│  [📖 折叠面板]      │  [▶ 运行代码] [🔄 重置] [💾 保存]        │
-│                      │                                            │
-└──────────────────────┴────────────────────────────────────────────┘
+┌──────────────────────┬────────────────────────┬──────────────────┐
+│                      │                        │                  │
+│   任务描述 (25%)     │   Wokwi 仿真器 (50%)  │  X-Ray 视图 (25%) │
+│                      │                        │                  │
+│  • 当前步骤          │  ┌───────────────────┐  │ ┌──────────────┐ │
+│  • 学习目标          │  │                   │  │ │              │ │
+│  • 代码模板          │  │   Wokwi iframe    │  │ │ SVG 动画     │ │
+│  • 提示信息          │  │   (代码+电路)     │  │ │ 原理可视化   │ │
+│                      │  │                   │  │ │              │ │
+│  [🤖 AI 助教]       │  └───────────────────┘  │ └──────────────┘ │
+│  [💡 提示]          │                        │                  │
+│  [📖 折叠面板]      │  [▶ 运行] [🔄 重置]   │ [播放] [暂停]    │
+│                      │  [💾 保存]            │                  │
+└──────────────────────┴────────────────────────┴──────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
 │ 底部状态栏                                                       │
@@ -996,6 +1027,17 @@ const PERSISTENCE_SYSTEM = {
   from { width: var(--prev-progress); }
   to { width: var(--new-progress); }
 }
+
+/* X-Ray 动画 */
+@keyframes transistor-on {
+  from { fill: #666; }
+  to { fill: #00FFC2; }
+}
+
+@keyframes current-flow {
+  0% { stroke-dashoffset: 100; }
+  100% { stroke-dashoffset: 0; }
+}
 ```
 
 ## 🛠️ 技术实现指南
@@ -1003,10 +1045,10 @@ const PERSISTENCE_SYSTEM = {
 ### 技术栈
 
 - **前端框架**: Vue 3 + Nuxt 4 + TypeScript
-- **仿真器**: Wokwi iframe 集成
+- **仿真器**: Wokwi iframe 集成 + Custom Chip API
 - **状态管理**: Pinia + localStorage
 - **AI 助教**: OpenAI API 直接调用
-- **动画库**: CSS3 + 简单 JavaScript
+- **动画库**: CSS3 + SVG 动画
 
 ### 核心文件结构
 
@@ -1019,14 +1061,18 @@ src/
 │   ├── LessonScene.vue           # 关卡场景主组件
 │   ├── TaskPanel.vue             # 任务描述面板
 │   ├── WokwiSimulator.vue        # Wokwi iframe 包装器
+│   ├── XRayVisualizer.vue        # X-Ray 透视视图
 │   ├── ProgressBar.vue           # 进度条
 │   ├── AITutor.vue               # AI 助教
 │   ├── OnboardingOverlay.vue     # 新手引导
 │   ├── ShareCard.vue             # 分享卡片生成
+│   ├── DebugChallenge.vue        # 故障排查模式
+│   ├── FeynmanLog.vue            # 费曼笔记
 │   └── AchievementModal.vue      # 成就弹窗
 ├── composables/
 │   ├── useLesson.ts              # 关卡逻辑
 │   ├── useWokwi.ts               # Wokwi 通信
+│   ├── useXRayVisualizer.ts      # X-Ray 透视逻辑
 │   ├── useProgress.ts            # 进度追踪
 │   ├── useAITutor.ts             # AI 助教
 │   ├── useOnboarding.ts          # 新手引导
@@ -1037,7 +1083,10 @@ src/
 │   │   └── gpio-basics.mp4
 │   ├── audio/
 │   │   ├── success.mp3
-│   │   └── error.mp3
+│   │   └── achievement.mp3
+│   ├── animations/
+│   │   ├── mos-transistor-on.svg
+│   │   └── current-flow.svg
 │   └── data/
 │       └── lessons.json          # 关卡数据
 └── utils/
@@ -1047,115 +1096,17 @@ src/
     └── aiHelper.ts               # AI 助教 API
 ```
 
-### Wokwi 集成实现
-
-```javascript
-// composables/useWokwi.ts
-export const useWokwi = () => {
-  const iframe = ref<HTMLIFrameElement>()
-  const isConnected = ref(false)
-  const lastHeartbeat = ref(0)
-  
-  // 心跳检测
-  const startHeartbeat = () => {
-    setInterval(() => {
-      if (iframe.value?.contentWindow) {
-        iframe.value.contentWindow.postMessage({
-          type: 'HEARTBEAT_PING',
-          timestamp: Date.now()
-        }, 'https://wokwi.com')
-      }
-    }, 5000)
-  }
-  
-  // 发送代码到 Wokwi
-  const sendCode = (code: string) => {
-    if (!iframe.value?.contentWindow) {
-      showNotification('仿真器未就绪，请稍后再试', 'error')
-      return false
-    }
-    
-    try {
-      iframe.value.contentWindow.postMessage({
-        type: 'UPDATE_CODE',
-        code
-      }, 'https://wokwi.com')
-      return true
-    } catch (error) {
-      showNotification('代码发送失败', 'error')
-      return false
-    }
-  }
-  
-  // 监听 Wokwi 状态
-  const listenToWokwi = () => {
-    window.addEventListener('message', (event) => {
-      if (event.origin !== 'https://wokwi.com') return
-      
-      switch (event.data.type) {
-        case 'HEARTBEAT_PONG':
-          lastHeartbeat.value = Date.now()
-          isConnected.value = true
-          break
-          
-        case 'SERIAL_OUTPUT':
-          checkLessonCompletion(event.data.output)
-          break
-          
-        case 'ERROR':
-          showNotification(`仿真器错误: ${event.data.message}`, 'error')
-          break
-      }
-    })
-  }
-  
-  return { 
-    sendCode, 
-    listenToWokwi, 
-    startHeartbeat,
-    isConnected 
-  }
-}
-```
-
-### 简单判题逻辑
-
-```javascript
-// utils/validation.ts
-export const validateLesson = (serialOutput: string, lessonId: string) => {
-  const validationRules = {
-    'lesson_gpio_basics': [
-      { pattern: /LED ON/, points: 50 },
-      { pattern: /LED OFF/, points: 50 },
-      { pattern: /LEVEL_COMPLETED/, points: 100 }
-    ]
-  }
-  
-  const rules = validationRules[lessonId] || []
-  let totalScore = 0
-  
-  rules.forEach(rule => {
-    if (rule.pattern.test(serialOutput)) {
-      totalScore += rule.points
-    }
-  })
-  
-  return {
-    passed: totalScore >= 100,
-    score: totalScore,
-    feedback: generateFeedback(totalScore)
-  }
-}
-```
-
 ## ✅ 质检清单
 
 ### 功能验证
 - [ ] 新手引导正常显示和完成
-- [ ] 三个阶段顺序加载，状态正确切换
+- [ ] 四个阶段顺序加载，状态正确切换
 - [ ] Wokwi iframe 正常加载和通信
+- [ ] X-Ray 透视视图动画流畅
 - [ ] 心跳检测和错误处理正常
 - [ ] 串口输出监听和判题逻辑正常
+- [ ] 故障排查模式正常工作
+- [ ] 费曼笔记提交和验证
 - [ ] 进度条实时更新
 - [ ] AI 助教响应正常
 - [ ] 分享卡片生成功能正常
@@ -1165,6 +1116,8 @@ export const validateLesson = (serialOutput: string, lessonId: string) => {
 ### 性能验证
 - [ ] 页面加载 < 3.0s
 - [ ] Wokwi iframe 加载 < 5.0s
+- [ ] X-Ray 动画帧率 > 30fps
+- [ ] iframe 通信延迟 < 100ms
 - [ ] AI 助教响应 < 3.0s
 - [ ] 分享卡片生成 < 2.0s
 - [ ] 本地存储延迟 < 100ms
@@ -1178,15 +1131,118 @@ export const validateLesson = (serialOutput: string, lessonId: string) => {
 - [ ] 分享功能易用
 
 ### 技术风险验证
-- [ ] Wokwi API 调用稳定
-- [ ] 心跳检测机制有效
-- [ ] 网络异常时有明确提示
-- [ ] 本地存储容量控制
-- [ ] AI API 调用频率限制
+- [ ] Wokwi Custom Chip API 稳定性测试
+- [ ] iframe 通信延迟 < 100ms
+- [ ] X-Ray 动画帧率 > 30fps
+- [ ] 移动端触摸响应正常
+
+## 🔬 技术验证 PoC（开发前必做）
+
+### 关键技术风险验证
+
+在编写任何业务代码前，必须先验证以下技术可行性：
+
+#### 1. Wokwi Custom Chip API 验证
+```javascript
+// PoC Demo: 验证 Wokwi 能否稳定发送复杂时序数据
+const testWokwiIntegration = async () => {
+  // 测试目标：创建一个简单的虚拟逻辑分析仪
+  const customChip = new WokwiCustomChip({
+    name: 'test-logic-analyzer',
+    pins: ['GPIO17_MONITOR', 'VCC', 'GND']
+  });
+  
+  // 测试 1：基础通信
+  customChip.onPinChange = (pin, value, timestamp) => {
+    console.log(`Pin ${pin} changed to ${value} at ${timestamp}`);
+    
+    // 测试向主页面发送数据
+    parent.postMessage({
+      type: 'PIN_CHANGE',
+      data: { pin, value, timestamp }
+    }, '*');
+  };
+  
+  // 测试 2：高频数据传输（模拟示波器）
+  let sampleCount = 0;
+  const highFrequencyTest = setInterval(() => {
+    if (sampleCount++ > 1000) {
+      clearInterval(highFrequencyTest);
+      console.log('High frequency test completed');
+      return;
+    }
+    
+    // 模拟高频采样
+    customChip.sendSample({
+      timestamp: Date.now(),
+      value: Math.sin(sampleCount * 0.1)
+    });
+  }, 10); // 100Hz 采样率
+  
+  // 测试 3：复杂判题逻辑
+  const patternMatcher = new PatternMatcher();
+  customChip.onDataReceived = (data) => {
+    const result = patternMatcher.analyze(data);
+    if (result.isComplete) {
+      parent.postMessage({
+        type: 'CHALLENGE_COMPLETED',
+        result: result
+      }, '*');
+    }
+  };
+};
+
+// 如果这个 PoC 不能稳定工作，整个"智能判题"就是空谈
+```
+
+#### 2. iframe 通信性能测试
+```javascript
+// 测试 postMessage 在高频通信下的性能表现
+const performanceTest = () => {
+  const startTime = performance.now();
+  let messageCount = 0;
+  
+  // 发送 1000 条消息测试延迟
+  for (let i = 0; i < 1000; i++) {
+    parent.postMessage({
+      type: 'PERFORMANCE_TEST',
+      id: i,
+      timestamp: performance.now()
+    }, '*');
+  }
+  
+  window.addEventListener('message', (event) => {
+    if (event.data.type === 'PERFORMANCE_RESPONSE') {
+      messageCount++;
+      if (messageCount === 1000) {
+        const endTime = performance.now();
+        console.log(`1000 messages processed in ${endTime - startTime}ms`);
+        
+        // 如果延迟 > 100ms，需要重新设计通信策略
+        if (endTime - startTime > 100) {
+          console.warn('Communication latency too high, need optimization');
+        }
+      }
+    }
+  });
+};
+```
+
+### PoC 验证清单
+
+开发前必须完成：
+- [ ] Wokwi Custom Chip 基础通信测试
+- [ ] 高频数据传输性能测试  
+- [ ] 复杂判题逻辑可行性验证
+- [ ] iframe postMessage 延迟测试
+- [ ] SVG 动画实时更新性能测试
+- [ ] 移动端触摸交互响应测试
+
+**如果任何一项测试失败，必须调整技术方案后再开始业务开发。**
 
 ---
 
-**文档版本**: v2.0  
+**文档版本**: v3.0  
 **编制时间**: 2024-12-22  
-**审核状态**: ✅ 生产就绪版本  
+**审核状态**: ✅ 最终确定版本  
 **交付对象**: 开发团队

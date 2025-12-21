@@ -3,9 +3,9 @@
 ## 📋 文档概述
 
 **项目名称**: KNZN 硬件学习网站 - 认证系统  
-**文档版本**: v2.0  
+**文档版本**: v3.0  
 **最后更新**: 2024-12-22  
-**审核状态**: ✅ 生产就绪版本  
+**审核状态**: ✅ 最终确定版本  
 **文档类型**: 完整设计规范
 
 ## 🎯 核心定位
@@ -89,7 +89,7 @@
 │ ✅ 已获得：                  │
 │ 🔧 Arduino 入门  ⭐          │
 │ 👥 帮助者       ⭐           │
-│ 🏆 制造者       ⭐⭐         │
+│ 🏆 仿真大师     ⭐⭐         │
 │                              │
 │ ⏳ 进行中：                  │
 │ 🔧 PCB 设计入门  2/3 关卡    │
@@ -120,8 +120,8 @@
 │ 📌 完成 1 个关卡即可获得 PCB 设计徽章  │
 │    [继续学习]                         │
 │                                        │
-│ 📌 上传实物视频升级为实战认证          │
-│    [上传视频]                         │
+│ 📌 挑战高难度仿真获得实战认证          │
+│    [开始挑战]                         │
 └────────────────────────────────────────┘
 ```
 
@@ -154,7 +154,7 @@ const generateCertificate = (userData, badgeData) => {
 };
 ```
 
-### 2. 社区评审团机制
+### 2. 高难度仿真挑战系统
 
 ```javascript
 // 高难度仿真挑战系统
@@ -241,8 +241,129 @@ const ADVANCED_SIMULATION_CHALLENGE = {
     passingScore: 80  // 80分以上通过
   }
 }
+```
 
-// 社区评审团 + 简单人工审核（针对实物视频，可选）
+### 3. 自动认证逻辑 + 防作弊机制
+
+```javascript
+// 自动检查用户是否满足徽章条件
+const checkBadgeEligibility = (userId) => {
+  const user = getUserProgress(userId);
+  const badges = [];
+  
+  // Arduino 入门徽章
+  if (user.completedLevels.arduino >= 3) {
+    badges.push('arduino-beginner');
+  }
+  
+  // PCB 设计徽章  
+  if (user.completedLevels.pcb >= 3) {
+    badges.push('pcb-beginner');
+  }
+  
+  // 帮助者徽章
+  if (user.acceptedAnswers >= 20) {
+    badges.push('helper');
+  }
+  
+  // 自动颁发新徽章
+  badges.forEach(badge => {
+    if (!user.badges.includes(badge)) {
+      awardBadge(userId, badge);
+    }
+  });
+};
+
+// 🛡️ 防作弊机制
+const ANTI_CHEAT_SYSTEM = {
+  // 关键判题逻辑放在云函数
+  serverSideValidation: {
+    enabled: true,
+    endpoint: '/api/validate-challenge',
+    
+    // 使用 Supabase Edge Functions 进行后端验证
+    validateChallenge: async (userId, challengeId, submissionData) => {
+      // 在服务端重新运行测试用例
+      const testResults = await runServerSideTests(challengeId, submissionData);
+      
+      // 验证提交数据的完整性
+      const dataIntegrity = verifySubmissionIntegrity(submissionData);
+      
+      // 检查时间合理性（防止瞬间完成）
+      const timeValidation = validateCompletionTime(submissionData.timeSpent);
+      
+      return {
+        isValid: testResults.passed && dataIntegrity && timeValidation,
+        score: testResults.score,
+        evidence: testResults.evidence
+      };
+    }
+  },
+  
+  // 前端数据签名
+  dataIntegrity: {
+    enabled: true,
+    
+    // 对关键数据进行签名
+    signCriticalData: (data) => {
+      const timestamp = Date.now();
+      const payload = { ...data, timestamp };
+      const signature = generateHMAC(payload, process.env.SIGNING_KEY);
+      
+      return { payload, signature };
+    },
+    
+    // 服务端验证签名
+    verifySignature: (signedData) => {
+      const { payload, signature } = signedData;
+      const expectedSignature = generateHMAC(payload, process.env.SIGNING_KEY);
+      
+      return signature === expectedSignature;
+    }
+  },
+  
+  // 行为分析
+  behaviorAnalysis: {
+    enabled: true,
+    
+    // 检测异常行为模式
+    detectAnomalies: (userActions) => {
+      const flags = [];
+      
+      // 完成时间过短
+      if (userActions.completionTime < 30000) { // 30秒
+        flags.push('suspiciously_fast');
+      }
+      
+      // 鼠标/键盘活动异常
+      if (userActions.interactionCount < 10) {
+        flags.push('insufficient_interaction');
+      }
+      
+      // 代码修改次数异常
+      if (userActions.codeChanges < 3) {
+        flags.push('minimal_code_changes');
+      }
+      
+      return flags;
+    }
+  },
+  
+  // 降级策略：防君子不防小人
+  fallbackMeasures: {
+    codeObfuscation: true,
+    clientSideEncryption: true,
+    randomizedTestCases: true,
+    
+    // 即使被破解，也不影响核心体验
+    gracefulDegradation: true
+  }
+}
+```
+
+### 4. 社区评审团机制（针对实物视频，可选）
+
+```javascript
 const AdminPanel = () => {
   const [pendingVideos, setPendingVideos] = useState([]);
   const [communityReviews, setCommunityReviews] = useState([]);
@@ -339,38 +460,6 @@ const COMMUNITY_REVIEW_SYSTEM = {
 }
 ```
 
-### 3. 自动认证逻辑
-
-```javascript
-// 自动检查用户是否满足徽章条件
-const checkBadgeEligibility = (userId) => {
-  const user = getUserProgress(userId);
-  const badges = [];
-  
-  // Arduino 入门徽章
-  if (user.completedLevels.arduino >= 3) {
-    badges.push('arduino-beginner');
-  }
-  
-  // PCB 设计徽章  
-  if (user.completedLevels.pcb >= 3) {
-    badges.push('pcb-beginner');
-  }
-  
-  // 帮助者徽章
-  if (user.acceptedAnswers >= 20) {
-    badges.push('helper');
-  }
-  
-  // 自动颁发新徽章
-  badges.forEach(badge => {
-    if (!user.badges.includes(badge)) {
-      awardBadge(userId, badge);
-    }
-  });
-};
-```
-
 ## 💰 变现模式
 
 ### 证书相关收费
@@ -378,7 +467,7 @@ const checkBadgeEligibility = (userId) => {
 ```
 📜 证书服务
 ├─ 电子版证书：免费
-├─ 高清 PDF 下载：Pro 会员（¥9.9/月）
+├─ 高清 PDF 下载：Pro 会员（¥19.9/月）
 ├─ 定制证书样式：¥19.9/次
 └─ LinkedIn 认证展示：Pro 会员功能
 
@@ -398,14 +487,14 @@ const checkBadgeEligibility = (userId) => {
 
 ```
 月度收入预估：
-├─ Pro 会员：100 人 × ¥9.9 = ¥990
-├─ 定制证书：50 次 × ¥19.9 = ¥995  
-└─ 总计：约 ¥2,000/月
+├─ Pro 会员：100 人 × ¥19.9 = ¥1,990
+├─ 定制证书：20 次 × ¥19.9 = ¥398  
+└─ 总计：约 ¥2,400/月
 
 成本：
 ├─ 服务器：¥200/月
 ├─ 人工审核：¥500/月（每天 10 分钟）
-└─ 净利润：¥1,300/月
+└─ 净利润：¥1,700/月
 ```
 
 ## 🚀 MVP 开发计划
@@ -420,10 +509,10 @@ const checkBadgeEligibility = (userId) => {
 - [ ] PDF 生成功能
 - [ ] 证书验证页面
 
-### Week 3: 社交认证
-- [ ] 视频上传功能
-- [ ] 社区评审团系统
-- [ ] 实战徽章逻辑
+### Week 3: 高难度挑战
+- [ ] 仿真挑战系统
+- [ ] 防作弊机制
+- [ ] 自动评分逻辑
 
 ### Week 4: 变现功能
 - [ ] Pro 会员系统
@@ -437,12 +526,13 @@ const checkBadgeEligibility = (userId) => {
 | **徽章获得率** | 40% | 用户获得至少 1 个徽章的比例 |
 | **证书下载率** | 20% | 获得徽章用户下载证书的比例 |
 | **Pro 转化率** | 5% | 免费用户转为 Pro 会员的比例 |
+| **挑战通过率** | 15% | 高难度仿真挑战的通过率 |
 | **审核效率** | 10 分钟/天 | 每日视频审核时间 |
 | **用户满意度** | 4.0+ ⭐ | 对认证系统的满意度 |
 
 ---
 
-**文档版本**: v2.0  
+**文档版本**: v3.0  
 **编制时间**: 2024-12-22  
-**审核状态**: ✅ 生产就绪版本  
+**审核状态**: ✅ 最终确定版本  
 **交付对象**: 开发团队
