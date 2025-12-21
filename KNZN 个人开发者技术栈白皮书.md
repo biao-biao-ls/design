@@ -59,6 +59,12 @@
 * *特点*：`gpt-4o-mini` 极其便宜且速度快，适合高频低难度的教学对话。
 
 
+* **对象存储**: **Cloudflare R2** (主) / **AWS S3** (备选)
+* *用途*：存储用户上传的图片、蓝图文件、证书附件等。
+* *特点*：成本极低 ($0.015/GB)，全球 CDN 加速，与 PostgreSQL 完美分离。
+* *集成方式*：前端直传 (Presigned URL)，后端只负责签名验证。
+
+
 * **邮件服务**: **Resend**
 * *用途*：发送欢迎邮件、证书 PDF、重置密码邮件。
 * *特点*：开发者友好的 API，送达率高，免费额度大。
@@ -66,6 +72,66 @@
 
 * **PDF 生成**: **jspdf** + **html2canvas**
 * *用途*：前端生成"结业证书"，无需后端渲染。
+
+
+### 对象存储架构设计
+
+```typescript
+// Cloudflare R2 配置
+const R2_CONFIG = {
+  accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+  accessKeyId: process.env.R2_ACCESS_KEY_ID,
+  secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+  bucketName: 'knzn-assets',
+  
+  // 文件分类存储
+  folders: {
+    userAvatars: 'avatars/',
+    communityImages: 'community/',
+    blueprintFiles: 'blueprints/',
+    certificates: 'certificates/'
+  },
+  
+  // 成本控制
+  costControl: {
+    maxStorageGB: 50, // 最大存储 50GB
+    maxBandwidthGB: 500, // 每月最大流量 500GB
+    autoCleanup: true, // 自动清理孤儿文件
+    compressionRequired: true // 强制前端压缩
+  }
+}
+
+// 前端直传流程
+const uploadToR2 = async (file: File, folder: string) => {
+  // 1. 获取预签名 URL
+  const { presignedUrl, fileKey } = await $fetch('/api/upload/presign', {
+    method: 'POST',
+    body: {
+      fileName: file.name,
+      fileType: file.type,
+      folder: folder
+    }
+  })
+  
+  // 2. 直传到 R2（不经过后端）
+  const uploadResponse = await fetch(presignedUrl, {
+    method: 'PUT',
+    body: file,
+    headers: {
+      'Content-Type': file.type
+    }
+  })
+  
+  if (!uploadResponse.ok) {
+    throw new Error('Upload failed')
+  }
+  
+  return {
+    url: `https://assets.knzn.net/${fileKey}`,
+    key: fileKey
+  }
+}
+```
 
 
 
@@ -264,3 +330,12 @@ export default defineEventHandler(async (event) => {
 5. **性能监控**
 * 使用 Vercel Analytics 监控页面性能
 * 监控 PostgreSQL 连接数，避免连接池耗尽
+
+6. **Better-Auth 兼容性备选方案**
+* Better-Auth 在 Nuxt 4 中如遇到 edge case，可切换到 NuxtAuth (Auth.js)
+* 保持技术栈灵活性，避免被单一库锁定
+
+7. **对象存储最佳实践**
+* 坚持前端压缩 → 直传 R2 模式，后端只负责签名
+* 千万不要让原图经过后端，会打爆 VPS 带宽和内存
+* 定期清理孤儿文件，控制存储成本

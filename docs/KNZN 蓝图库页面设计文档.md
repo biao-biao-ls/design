@@ -554,11 +554,20 @@ export default defineEventHandler(async (event) => {
     })
   }
   
+  // 🛡️ 安全性：严格校验 keyword，防止开放重定向攻击
+  const sanitizedKeyword = sanitizeKeyword(keyword as string)
+  if (!sanitizedKeyword) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Invalid keyword format'
+    })
+  }
+  
   // 重定向 URL 规则（可随时更新，无需改数据库）
   const redirectRules = {
-    taobao: `https://s.taobao.com/search?q=${encodeURIComponent(keyword)}`,
-    jd: `https://search.jd.com/Search?keyword=${encodeURIComponent(keyword)}`,
-    universal: `https://www.google.com/search?q=${encodeURIComponent(keyword + ' 购买')}`
+    taobao: `https://s.taobao.com/search?q=${encodeURIComponent(sanitizedKeyword)}`,
+    jd: `https://search.jd.com/Search?keyword=${encodeURIComponent(sanitizedKeyword)}`,
+    universal: `https://www.google.com/search?q=${encodeURIComponent(sanitizedKeyword + ' 购买')}`
   }
   
   const redirectUrl = redirectRules[platform]
@@ -571,13 +580,39 @@ export default defineEventHandler(async (event) => {
   }
   
   // 记录点击统计（可选）
-  await recordAffiliateClick(platform, keyword)
+  await recordAffiliateClick(platform, sanitizedKeyword)
   
   // 302 重定向
   await sendRedirect(event, redirectUrl, 302)
 })
 
-// 前端使用方式
+// 🛡️ 关键词安全校验函数
+function sanitizeKeyword(keyword: string): string | null {
+  // 只允许中文、英文、数字、空格、常见符号
+  const allowedPattern = /^[\u4e00-\u9fa5a-zA-Z0-9\s\-_\.]+$/
+  
+  // 长度限制
+  if (keyword.length > 100) {
+    return null
+  }
+  
+  // 格式校验
+  if (!allowedPattern.test(keyword)) {
+    return null
+  }
+  
+  // 去除首尾空格
+  const trimmed = keyword.trim()
+  
+  // 防止空字符串
+  if (trimmed.length === 0) {
+    return null
+  }
+  
+  return trimmed
+}
+
+// 前端使用方式（保持不变）
 const handleBOMSearch = (platform: string, keyword: string) => {
   // 通过重定向服务，避免硬编码 URL
   window.open(`/api/redirect/${platform}?keyword=${encodeURIComponent(keyword)}`, '_blank')

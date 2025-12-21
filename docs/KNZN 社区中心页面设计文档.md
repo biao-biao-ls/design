@@ -503,7 +503,7 @@ Level 系统：
 ### 图片存储策略
 
 ```typescript
-// 前端图片压缩和上传
+// 前端图片压缩和上传（坚持前端压缩 → 直传 R2）
 import Compressor from 'compressorjs'
 
 const handleImageUpload = async (file: File) => {
@@ -524,17 +524,84 @@ const handleImageUpload = async (file: File) => {
     throw new Error('图片过大，请选择更小的图片或降低质量')
   }
   
-  // 3. 上传到 Cloudflare R2
-  const formData = new FormData()
-  formData.append('image', compressedFile)
-  
-  const response = await $fetch('/api/upload/image', {
+  // 3. 获取预签名 URL（后端只负责签名，不经手文件流）
+  const { presignedUrl, fileKey } = await $fetch('/api/upload/presign', {
     method: 'POST',
-    body: formData
+    body: {
+      fileName: compressedFile.name,
+      fileType: compressedFile.type,
+      fileSize: compressedFile.size
+    }
   })
   
-  return response.url
+  // 4. 直传到 Cloudflare R2（绕过后端）
+  const uploadResponse = await fetch(presignedUrl, {
+    method: 'PUT',
+    body: compressedFile,
+    headers: {
+      'Content-Type': compressedFile.type
+    }
+  })
+  
+  if (!uploadResponse.ok) {
+    throw new Error('Upload to R2 failed')
+  }
+  
+  return {
+    url: `https://assets.knzn.net/${fileKey}`,
+    key: fileKey,
+    size: compressedFile.size
+  }
 }
+
+// server/api/upload/presign.post.ts（后端只负责签名）
+export default defineEventHandler(async (event) => {
+  const body = await readBody(event)
+  const { fileName, fileType, fileSize } = body
+  
+  // 验证用户权限
+  const session = await getUserSession(event)
+  if (!session) {
+    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+  }
+  
+  // 验证文件类型和大小
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+  if (!allowedTypes.includes(fileType)) {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid file type' })
+  }
+  
+  if (fileSize > 500 * 1024) {
+    throw createError({ statusCode: 400, statusMessage: 'File too large' })
+  }
+  
+  // 生成唯一文件名
+  const fileExtension = fileName.split('.').pop()
+  const uniqueFileName = `community/${Date.now()}-${nanoid(8)}.${fileExtension}`
+  
+  // 生成预签名 URL（有效期 5 分钟）
+  const presignedUrl = await generateR2PresignedUrl(uniqueFileName, fileType, 300)
+  
+  return {
+    presignedUrl,
+    fileKey: uniqueFileName
+  }
+})
+
+// 🛡️ 关键：后端绝不经手文件流，只负责签名
+const generateR2PresignedUrl = async (key: string, contentType: string, expiresIn: number) => {
+  // 使用 AWS SDK 生成预签名 URL
+  const command = new PutObjectCommand({
+    Bucket: 'knzn-community-images',
+    Key: key,
+    ContentType: contentType,
+    // 限制上传大小
+    ContentLength: 500 * 1024
+  })
+  
+  return await getSignedUrl(s3Client, command, { expiresIn })
+}
+```
 
 // 成本控制配置
 const STORAGE_CONFIG = {

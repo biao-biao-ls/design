@@ -491,29 +491,46 @@ const WOKWI_INTEGRATION = {
       jsRole: 'state-trigger-only'
     },
     
-    // 状态锁实现
+    // 状态锁实现（增加内存泄漏防护）
     updateWithLock: (() => {
       let isUpdating = false
       let pendingUpdate = null
+      let rafId = null
       
-      return (newState) => {
-        if (isUpdating) {
-          pendingUpdate = newState
-          return
+      // 🛡️ 清理函数，防止内存泄漏
+      const cleanup = () => {
+        if (rafId) {
+          cancelAnimationFrame(rafId)
+          rafId = null
         }
-        
-        isUpdating = true
-        requestAnimationFrame(() => {
-          updateXRayVisualization(newState)
-          isUpdating = false
-          
-          // 处理待更新状态
-          if (pendingUpdate) {
-            const nextState = pendingUpdate
-            pendingUpdate = null
-            this.updateWithLock(nextState)
+        isUpdating = false
+        pendingUpdate = null
+      }
+      
+      return {
+        update: (newState) => {
+          if (isUpdating) {
+            pendingUpdate = newState
+            return
           }
-        })
+          
+          isUpdating = true
+          rafId = requestAnimationFrame(() => {
+            updateXRayVisualization(newState)
+            isUpdating = false
+            rafId = null
+            
+            // 处理待更新状态
+            if (pendingUpdate) {
+              const nextState = pendingUpdate
+              pendingUpdate = null
+              this.update(nextState)
+            }
+          })
+        },
+        
+        // 组件卸载时调用
+        cleanup
       }
     })(),
     
@@ -1193,10 +1210,16 @@ const LAYOUT_SYSTEM = {
         const guestProgress = localStorage.getItem('knzn_lesson_progress')
         
         if (guestToken && guestProgress) {
+          // 🛡️ 一次性令牌：添加随机 nonce
+          const nonce = crypto.getRandomValues(new Uint8Array(16))
+          const nonceHex = Array.from(nonce).map(b => b.toString(16).padStart(2, '0')).join('')
+          
           const progressToken = btoa(JSON.stringify({
             guestToken,
             progress: JSON.parse(guestProgress),
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            nonce: nonceHex, // 防止重放攻击
+            oneTimeUse: true // 标记为一次性使用
           }))
           
           return `${window.location.origin}?progress=${progressToken}`
@@ -1205,7 +1228,7 @@ const LAYOUT_SYSTEM = {
         return window.location.origin
       },
       
-      // 电脑端处理进度链接
+      // 电脑端处理进度链接（阅后即焚）
       handleProgressLink: async () => {
         const urlParams = new URLSearchParams(window.location.search)
         const progressToken = urlParams.get('progress')
@@ -1216,17 +1239,41 @@ const LAYOUT_SYSTEM = {
             
             // 检查时效性（24小时内有效）
             if (Date.now() - progressData.timestamp < 24 * 60 * 60 * 1000) {
-              // 存储到临时变量，等用户登录后合并
-              sessionStorage.setItem('pending_guest_merge', JSON.stringify(progressData))
-              
-              // 清理 URL
+              // 🛡️ 阅后即焚：立即清理 URL，防止重复使用
               window.history.replaceState({}, document.title, window.location.pathname)
               
+              // 存储到临时变量，等用户登录后合并
+              sessionStorage.setItem('pending_guest_merge', JSON.stringify({
+                ...progressData,
+                consumed: true, // 标记已消费
+                consumedAt: Date.now()
+              }))
+              
+              // 🛡️ 如果有服务端存储，立即标记 token 为已使用
+              if (progressData.oneTimeUse) {
+                try {
+                  await $fetch('/api/guest/consume-token', {
+                    method: 'POST',
+                    body: { 
+                      nonce: progressData.nonce,
+                      guestToken: progressData.guestToken 
+                    }
+                  })
+                } catch (error) {
+                  console.warn('Failed to consume token on server:', error)
+                }
+              }
+              
               return progressData
+            } else {
+              console.warn('Progress token expired')
             }
           } catch (error) {
             console.warn('Invalid progress token:', error)
           }
+          
+          // 清理无效的 URL 参数
+          window.history.replaceState({}, document.title, window.location.pathname)
         }
         
         return null

@@ -292,20 +292,63 @@ const ANTI_CHEAT_SYSTEM = {
   }
 }
 
-// 徽章颁发函数（使用短 ID）
+// 徽章颁发函数（使用短 ID + 重试机制）
 import { nanoid } from 'nanoid'
 
 async function awardBadge(userId: string, badgeType: string) {
-  const certificateId = nanoid(8) // 生成 8 位短 ID，如 'Xy9AzP2k'
-  const verifyHash = generateVerifyHash(userId, badgeType, certificateId)
+  let certificateId: string
+  let attempts = 0
+  const maxAttempts = 3
   
-  await db.insert(certificates).values({
-    id: certificateId, // 短 ID 而非长 UUID
-    userId,
-    badgeType,
-    verifyHash,
-    issuedAt: new Date()
-  })
+  // 🛡️ 重试机制：防止 nanoid 冲突（虽然概率极低）
+  while (attempts < maxAttempts) {
+    try {
+      certificateId = nanoid(8) // 生成 8 位短 ID，如 'Xy9AzP2k'
+      const verifyHash = generateVerifyHash(userId, badgeType, certificateId)
+      
+      await db.insert(certificates).values({
+        id: certificateId, // 短 ID 而非长 UUID
+        userId,
+        badgeType,
+        verifyHash,
+        issuedAt: new Date()
+      })
+      
+      // 插入成功，跳出循环
+      break
+      
+    } catch (error) {
+      attempts++
+      
+      // 检查是否是唯一性约束错误
+      if (error.code === '23505' && error.constraint?.includes('certificates_pkey')) {
+        console.warn(`Certificate ID collision detected (attempt ${attempts}/${maxAttempts}):`, certificateId)
+        
+        if (attempts >= maxAttempts) {
+          // 最后一次尝试失败，使用更长的 ID
+          certificateId = nanoid(12) // 降级到 12 位
+          const verifyHash = generateVerifyHash(userId, badgeType, certificateId)
+          
+          await db.insert(certificates).values({
+            id: certificateId,
+            userId,
+            badgeType,
+            verifyHash,
+            issuedAt: new Date()
+          })
+          
+          console.warn('Used 12-character fallback ID:', certificateId)
+          break
+        }
+        
+        // 继续重试
+        continue
+      } else {
+        // 其他错误，直接抛出
+        throw error
+      }
+    }
+  }
   
   // 更新用户徽章列表
   const user = await db.select().from(users).where(eq(users.id, userId)).limit(1)
@@ -321,35 +364,53 @@ async function awardBadge(userId: string, badgeType: string) {
   return certificateId
 }
 
-// 证书验证页面
+// 证书验证页面（增加错误处理）
 // server/api/cert/[id].get.ts
 export default defineEventHandler(async (event) => {
   const certificateId = getRouterParam(event, 'id') // 短 ID
   
-  const certificate = await db.select({
-    id: certificates.id,
-    badgeType: certificates.badgeType,
-    issuedAt: certificates.issuedAt,
-    verifyHash: certificates.verifyHash,
-    userName: users.name,
-    userLevel: users.level
-  })
-  .from(certificates)
-  .leftJoin(users, eq(certificates.userId, users.id))
-  .where(eq(certificates.id, certificateId))
-  .limit(1)
-  
-  if (!certificate.length) {
+  // 🛡️ 输入验证：确保 ID 格式正确
+  if (!certificateId || !/^[A-Za-z0-9_-]{8,12}$/.test(certificateId)) {
     throw createError({
-      statusCode: 404,
-      statusMessage: 'Certificate not found'
+      statusCode: 400,
+      statusMessage: 'Invalid certificate ID format'
     })
   }
   
-  return {
-    certificate: certificate[0],
-    verifyUrl: `https://knzn.net/c/${certificateId}`, // 短链接格式
-    isValid: true
+  try {
+    const certificate = await db.select({
+      id: certificates.id,
+      badgeType: certificates.badgeType,
+      issuedAt: certificates.issuedAt,
+      verifyHash: certificates.verifyHash,
+      userName: users.name,
+      userLevel: users.level
+    })
+    .from(certificates)
+    .leftJoin(users, eq(certificates.userId, users.id))
+    .where(eq(certificates.id, certificateId))
+    .limit(1)
+    
+    if (!certificate.length) {
+      throw createError({
+        statusCode: 404,
+        statusMessage: 'Certificate not found'
+      })
+    }
+    
+    return {
+      certificate: certificate[0],
+      verifyUrl: `https://knzn.net/c/${certificateId}`, // 短链接格式
+      isValid: true,
+      verifiedAt: new Date().toISOString()
+    }
+    
+  } catch (error) {
+    console.error('Certificate verification error:', error)
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Certificate verification failed'
+    })
   }
 })
 
