@@ -154,149 +154,99 @@ const generateCertificate = (userData, badgeData) => {
 };
 ```
 
-### 2. 高难度仿真挑战系统
-
-```javascript
-// 高难度仿真挑战系统
-const ADVANCED_SIMULATION_CHALLENGE = {
-  // 挑战环境配置
-  challengeEnvironment: {
-    aiAssistanceDisabled: true,    // 禁用 AI 助教
-    hintsDisabled: true,           // 禁用提示系统
-    timeLimit: 3600,               // 60 分钟时间限制
-    maxAttempts: 3,                // 最多 3 次尝试机会
-    
-    // 复杂电路调试任务
-    scenarios: [
-      {
-        id: 'motor_control_debug',
-        title: '电机控制系统故障排查',
-        description: '一个复杂的双电机控制系统出现异常，需要在限定时间内找出并修复所有问题',
-        
-        faultInjection: [
-          { type: 'code_bug', location: 'pwm_frequency_setting', severity: 'critical' },
-          { type: 'circuit_fault', location: 'h_bridge_connection', severity: 'major' },
-          { type: 'timing_issue', location: 'interrupt_handler', severity: 'minor' }
-        ],
-        
-        successCriteria: {
-          allFaultsFixed: true,
-          performanceMetrics: {
-            motorSpeedAccuracy: '>95%',
-            responseTime: '<100ms',
-            powerEfficiency: '>80%'
-          }
-        }
-      },
-      
-      {
-        id: 'sensor_fusion_challenge',
-        title: '多传感器数据融合算法实现',
-        description: '实现一个融合温度、湿度、光照传感器数据的智能环境监控系统',
-        
-        requirements: [
-          '实现卡尔曼滤波算法',
-          '处理传感器数据异常',
-          '实现自适应阈值调整',
-          '优化功耗管理'
-        ],
-        
-        evaluation: {
-          algorithmCorrectness: 40,
-          codeQuality: 30,
-          performanceOptimization: 20,
-          innovativeApproach: 10
-        }
-      }
-    ]
-  },
-  
-  // 自动评分系统
-  autoGrading: {
-    enabled: true,
-    
-    metrics: [
-      {
-        name: 'functional_correctness',
-        weight: 50,
-        testCases: 'automated_simulation_tests'
-      },
-      {
-        name: 'code_quality',
-        weight: 25,
-        analyzer: 'static_code_analysis'
-      },
-      {
-        name: 'performance_efficiency',
-        weight: 15,
-        benchmark: 'execution_time_memory_usage'
-      },
-      {
-        name: 'problem_solving_approach',
-        weight: 10,
-        evaluation: 'solution_path_analysis'
-      }
-    ],
-    
-    passingScore: 80  // 80分以上通过
-  }
-}
-```
-
-### 3. 自动认证逻辑 + 防作弊机制
+### 2. 自动认证系统 + 防作弊机制
 
 ```javascript
 // 自动检查用户是否满足徽章条件
-const checkBadgeEligibility = (userId) => {
-  const user = getUserProgress(userId);
-  const badges = [];
+// server/api/badges/check.post.ts
+export default defineEventHandler(async (event) => {
+  const session = await getUserSession(event)
+  if (!session) {
+    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+  }
+  
+  const userId = session.user.id
+  const newBadges = []
+  
+  // 获取用户进度
+  const userProgress = await db.select()
+    .from(progress)
+    .where(eq(progress.userId, userId))
+  
+  const completedLessons = userProgress.filter(p => p.status === 'completed')
   
   // Arduino 入门徽章
-  if (user.completedLevels.arduino >= 3) {
-    badges.push('arduino-beginner');
+  const arduinoLessons = completedLessons.filter(p => p.lessonId.startsWith('arduino'))
+  if (arduinoLessons.length >= 3) {
+    const hasArduinoBadge = await checkUserHasBadge(userId, 'arduino-beginner')
+    if (!hasArduinoBadge) {
+      await awardBadge(userId, 'arduino-beginner')
+      newBadges.push('arduino-beginner')
+    }
   }
   
   // PCB 设计徽章  
-  if (user.completedLevels.pcb >= 3) {
-    badges.push('pcb-beginner');
+  const pcbLessons = completedLessons.filter(p => p.lessonId.startsWith('pcb'))
+  if (pcbLessons.length >= 3) {
+    const hasPcbBadge = await checkUserHasBadge(userId, 'pcb-beginner')
+    if (!hasPcbBadge) {
+      await awardBadge(userId, 'pcb-beginner')
+      newBadges.push('pcb-beginner')
+    }
   }
   
   // 帮助者徽章
-  if (user.acceptedAnswers >= 20) {
-    badges.push('helper');
+  const acceptedAnswers = await db.select()
+    .from(replies)
+    .where(
+      and(
+        eq(replies.userId, userId),
+        eq(replies.isBestAnswer, true)
+      )
+    )
+  
+  if (acceptedAnswers.length >= 20) {
+    const hasHelperBadge = await checkUserHasBadge(userId, 'helper')
+    if (!hasHelperBadge) {
+      await awardBadge(userId, 'helper')
+      newBadges.push('helper')
+    }
   }
   
-  // 自动颁发新徽章
-  badges.forEach(badge => {
-    if (!user.badges.includes(badge)) {
-      awardBadge(userId, badge);
-    }
-  });
-};
+  return {
+    newBadges,
+    message: newBadges.length > 0 ? '恭喜获得新徽章！' : '暂无新徽章'
+  }
+})
 
 // 🛡️ 防作弊机制
 const ANTI_CHEAT_SYSTEM = {
-  // 关键判题逻辑放在云函数
+  // 关键判题逻辑放在后端
   serverSideValidation: {
     enabled: true,
-    endpoint: '/api/validate-challenge',
     
-    // 使用 Supabase Edge Functions 进行后端验证
+    // 在服务端重新验证挑战结果
     validateChallenge: async (userId, challengeId, submissionData) => {
-      // 在服务端重新运行测试用例
-      const testResults = await runServerSideTests(challengeId, submissionData);
-      
       // 验证提交数据的完整性
-      const dataIntegrity = verifySubmissionIntegrity(submissionData);
+      const dataIntegrity = verifySubmissionIntegrity(submissionData)
+      if (!dataIntegrity) {
+        return { isValid: false, reason: 'Data integrity check failed' }
+      }
       
       // 检查时间合理性（防止瞬间完成）
-      const timeValidation = validateCompletionTime(submissionData.timeSpent);
+      const timeValidation = validateCompletionTime(submissionData.timeSpent)
+      if (!timeValidation) {
+        return { isValid: false, reason: 'Completion time suspicious' }
+      }
+      
+      // 重新运行测试用例
+      const testResults = await runServerSideTests(challengeId, submissionData.code)
       
       return {
-        isValid: testResults.passed && dataIntegrity && timeValidation,
+        isValid: testResults.passed,
         score: testResults.score,
         evidence: testResults.evidence
-      };
+      }
     }
   },
   
@@ -306,19 +256,11 @@ const ANTI_CHEAT_SYSTEM = {
     
     // 对关键数据进行签名
     signCriticalData: (data) => {
-      const timestamp = Date.now();
-      const payload = { ...data, timestamp };
-      const signature = generateHMAC(payload, process.env.SIGNING_KEY);
+      const timestamp = Date.now()
+      const payload = { ...data, timestamp }
+      const signature = generateHMAC(payload, process.env.SIGNING_KEY)
       
-      return { payload, signature };
-    },
-    
-    // 服务端验证签名
-    verifySignature: (signedData) => {
-      const { payload, signature } = signedData;
-      const expectedSignature = generateHMAC(payload, process.env.SIGNING_KEY);
-      
-      return signature === expectedSignature;
+      return { payload, signature }
     }
   },
   
@@ -328,135 +270,68 @@ const ANTI_CHEAT_SYSTEM = {
     
     // 检测异常行为模式
     detectAnomalies: (userActions) => {
-      const flags = [];
+      const flags = []
       
       // 完成时间过短
       if (userActions.completionTime < 30000) { // 30秒
-        flags.push('suspiciously_fast');
+        flags.push('suspiciously_fast')
       }
       
       // 鼠标/键盘活动异常
       if (userActions.interactionCount < 10) {
-        flags.push('insufficient_interaction');
+        flags.push('insufficient_interaction')
       }
       
       // 代码修改次数异常
       if (userActions.codeChanges < 3) {
-        flags.push('minimal_code_changes');
+        flags.push('minimal_code_changes')
       }
       
-      return flags;
+      return flags
     }
-  },
-  
-  // 降级策略：防君子不防小人
-  fallbackMeasures: {
-    codeObfuscation: true,
-    clientSideEncryption: true,
-    randomizedTestCases: true,
-    
-    // 即使被破解，也不影响核心体验
-    gracefulDegradation: true
   }
 }
-```
 
-### 4. 社区评审团机制（针对实物视频，可选）
-
-```javascript
-const AdminPanel = () => {
-  const [pendingVideos, setPendingVideos] = useState([]);
-  const [communityReviews, setCommunityReviews] = useState([]);
+// 徽章颁发函数
+async function awardBadge(userId: string, badgeType: string) {
+  const certificateId = generateUUID()
+  const verifyHash = generateVerifyHash(userId, badgeType, certificateId)
   
-  return (
-    <div className="admin-panel">
-      <h2>待审核视频 ({pendingVideos.length})</h2>
-      
-      {/* 社区评审团预筛选 */}
-      <div className="community-review-section">
-        <h3>社区评审团已预筛选</h3>
-        {communityReviews.map(video => (
-          <div key={video.id} className="video-item">
-            <video src={video.url} controls />
-            <div className="community-feedback">
-              社区评分：{video.communityScore}/5 ⭐
-              评审人数：{video.reviewerCount} 人
-              推荐度：{video.recommendation}%
-            </div>
-            <div className="actions">
-              <button onClick={() => quickApprove(video.id)}>
-                ✅ 快速通过（社区推荐）
-              </button>
-              <button onClick={() => detailedReview(video.id)}>
-                🔍 详细审核
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-      
-      {/* 传统人工审核 */}
-      <div className="manual-review-section">
-        <h3>需要人工审核</h3>
-        {pendingVideos.map(video => (
-          <div key={video.id} className="video-item">
-            <video src={video.url} controls />
-            <div className="user-info">
-              用户：{video.userName}
-              申请徽章：{video.badgeName}
-            </div>
-            <div className="actions">
-              <button onClick={() => approve(video.id)}>
-                ✅ 通过
-              </button>
-              <button onClick={() => reject(video.id)}>
-                ❌ 拒绝
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-// 社区评审团机制
-const COMMUNITY_REVIEW_SYSTEM = {
-  // 评审团资格
-  reviewerQualifications: {
-    minLevel: 15,
-    minBadges: 3,
-    goodStanding: true, // 无违规记录
-    volunteerApplication: true
-  },
+  await db.insert(certificates).values({
+    id: certificateId,
+    userId,
+    badgeType,
+    verifyHash,
+    issuedAt: new Date()
+  })
   
-  // 评审流程
-  reviewProcess: {
-    // 每个视频需要 3 个评审员评分
-    minReviewers: 3,
-    maxReviewTime: 48, // 48 小时内完成
-    
-    // 评分标准
-    criteria: [
-      { name: '技术正确性', weight: 40 },
-      { name: '演示清晰度', weight: 30 },
-      { name: '创新程度', weight: 20 },
-      { name: '教学价值', weight: 10 }
-    ],
-    
-    // 自动通过条件
-    autoApproval: {
-      minScore: 4.0, // 平均分 4.0 以上
-      consensus: 0.8  // 80% 评审员推荐
-    }
-  },
-  
-  // 评审员激励
-  incentives: {
-    xpReward: 50,     // 每次评审获得 50 XP
-    monthlyBonus: 200, // 月度活跃评审员奖励
-    specialBadge: 'community-reviewer' // 专属徽章
+  // 更新用户徽章列表
+  const user = await db.select().from(users).where(eq(users.id, userId)).limit(1)
+  if (user.length) {
+    const currentBadges = user[0].badges || []
+    await db.update(users)
+      .set({ 
+        badges: [...currentBadges, badgeType]
+      })
+      .where(eq(users.id, userId))
   }
+  
+  return certificateId
+}
+
+// 检查用户是否已有徽章
+async function checkUserHasBadge(userId: string, badgeType: string) {
+  const existing = await db.select()
+    .from(certificates)
+    .where(
+      and(
+        eq(certificates.userId, userId),
+        eq(certificates.badgeType, badgeType)
+      )
+    )
+    .limit(1)
+  
+  return existing.length > 0
 }
 ```
 

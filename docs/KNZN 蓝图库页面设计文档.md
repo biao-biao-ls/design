@@ -388,52 +388,62 @@ Pro 订阅才是大头。
 
 ## 📊 数据模型设计
 
-### 核心数据结构
+### 核心数据结构 (Drizzle ORM Schema)
 
 ```typescript
-interface Blueprint {
-  // 基本信息
-  id: string
-  title: string
-  description: string
-  difficulty: 'beginner' | 'intermediate' | 'advanced'
-  category: string
-  tags: string[]
+// server/database/schema.ts
+import { pgTable, text, integer, boolean, timestamp, serial, jsonb } from 'drizzle-orm/pg-core'
+
+export const blueprints = pgTable('blueprints', {
+  id: serial('id').primaryKey(),
+  title: text('title').notNull(),
+  description: text('description'),
+  difficulty: text('difficulty'), // 'beginner' | 'intermediate' | 'advanced'
+  category: text('category'),
+  tags: text('tags').array(), // PostgreSQL 数组类型
   
   // 媒体资源
-  coverImage: string
-  images: string[]
-  videoUrl?: string
-  wokwiProjectId?: string  // Wokwi 项目 ID
+  coverImage: text('cover_image'),
+  images: text('images').array(),
+  videoUrl: text('video_url'),
+  wokwiProjectId: text('wokwi_project_id'), // Wokwi 项目 ID
   
-  // 文件资源（静态托管）
-  downloadUrl: string  // .zip文件直接下载
-  fileSize: string     // "12.4 MB"
+  // 文件资源
+  downloadUrl: text('download_url'), // .zip文件直接下载
+  fileSize: text('file_size'), // "12.4 MB"
   
-  // BOM 智能表格
-  bomData: BOMItem[]
-  affiliateLinks: {
+  // BOM 智能表格 (JSON 存储)
+  bomData: jsonb('bom_data').$type<BOMItem[]>(),
+  affiliateLinks: jsonb('affiliate_links').$type<{
     taobao?: string
     jd?: string
-  }
+  }>(),
   
   // Pro 会员内容
-  hasProContent: boolean
-  proContentUrl?: string   // 深度解析文档
+  hasProContent: boolean('has_pro_content').default(false),
+  proContentUrl: text('pro_content_url'),
   
   // 元数据
-  author: 'KNZN Official'
-  createdAt: string
-  updatedAt: string
+  author: text('author').default('KNZN Official'),
+  isOfficial: boolean('is_official').default(true),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
   
   // 统计数据
-  stats: {
-    downloads: number
-    forks: number        // Wokwi 克隆次数
-    rating: number
-    reviewCount: number
-  }
-}
+  downloads: integer('downloads').default(0),
+  forks: integer('forks').default(0), // Wokwi 克隆次数
+  rating: integer('rating').default(0), // 平均评分 * 100
+  reviewCount: integer('review_count').default(0)
+})
+
+export const blueprintReviews = pgTable('blueprint_reviews', {
+  id: serial('id').primaryKey(),
+  blueprintId: integer('blueprint_id').references(() => blueprints.id),
+  userId: text('user_id').references(() => users.id),
+  rating: integer('rating').notNull(), // 1-5 星
+  comment: text('comment'),
+  createdAt: timestamp('created_at').defaultNow()
+})
 
 interface BOMItem {
   name: string
@@ -447,18 +457,103 @@ interface BOMItem {
 }
 ```
 
+### API 端点设计 (Nuxt Server API)
+
+```typescript
+// server/api/blueprints/index.get.ts
+export default defineEventHandler(async (event) => {
+  const query = getQuery(event)
+  const { category, difficulty, search, page = 1, limit = 12 } = query
+  
+  let blueprintsQuery = db.select().from(blueprints)
+  
+  // 应用过滤条件
+  if (category) {
+    blueprintsQuery = blueprintsQuery.where(eq(blueprints.category, category))
+  }
+  
+  if (difficulty) {
+    blueprintsQuery = blueprintsQuery.where(eq(blueprints.difficulty, difficulty))
+  }
+  
+  if (search) {
+    blueprintsQuery = blueprintsQuery.where(
+      or(
+        ilike(blueprints.title, `%${search}%`),
+        ilike(blueprints.description, `%${search}%`)
+      )
+    )
+  }
+  
+  // 分页
+  const offset = (Number(page) - 1) * Number(limit)
+  const results = await blueprintsQuery
+    .limit(Number(limit))
+    .offset(offset)
+    .orderBy(desc(blueprints.createdAt))
+  
+  return {
+    blueprints: results,
+    pagination: {
+      page: Number(page),
+      limit: Number(limit),
+      total: results.length
+    }
+  }
+})
+
+// server/api/blueprints/[id].get.ts
+export default defineEventHandler(async (event) => {
+  const id = getRouterParam(event, 'id')
+  
+  const blueprint = await db.select()
+    .from(blueprints)
+    .where(eq(blueprints.id, Number(id)))
+    .limit(1)
+  
+  if (!blueprint.length) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: 'Blueprint not found'
+    })
+  }
+  
+  return blueprint[0]
+})
+
+// server/api/blueprints/[id]/download.post.ts
+export default defineEventHandler(async (event) => {
+  const id = getRouterParam(event, 'id')
+  
+  // 增加下载计数
+  await db.update(blueprints)
+    .set({ 
+      downloads: sql`${blueprints.downloads} + 1` 
+    })
+    .where(eq(blueprints.id, Number(id)))
+  
+  return { success: true }
+})
+```
+
 ### 数据存储策略
 
 ```
-静态资源：
-- 蓝图文件：CDN存储（.zip包）
-- 图片视频：CDN存储
-- 基本信息：数据库存储
+PostgreSQL 数据库：
+- 蓝图基本信息：blueprints 表
+- 用户评价：blueprint_reviews 表
+- BOM 数据：JSON 字段存储
+- 联盟营销链接：JSON 字段存储
 
-动态数据：
-- Wokwi 项目状态：实时 API
-- 用户评价：NoSQL数据库
-- 联盟营销数据：分析数据库
+静态资源 (CDN)：
+- 蓝图文件：Vercel Blob 或 Cloudflare R2
+- 图片视频：Vercel Blob 或 Cloudflare R2
+- 缓存策略：CDN 边缘缓存 24 小时
+
+缓存策略：
+- 蓝图列表：Redis 缓存 1 小时
+- 蓝图详情：Redis 缓存 6 小时
+- 统计数据：每日批量更新
 ```
 
 ## 📋 实施计划

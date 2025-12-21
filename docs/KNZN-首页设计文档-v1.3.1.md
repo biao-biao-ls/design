@@ -32,33 +32,107 @@
 
 ## 🎯 核心功能需求
 
-### FR-001: 全局状态管理
+### FR-001: 全局状态管理与后端同步
 
-**描述**: 页面加载时根据用户连接状态显示相应视觉呈现
+**描述**: 页面加载时根据用户连接状态显示相应视觉呈现，状态检查改为调用后端 API
 
 **初始化流程**:
 ```javascript
 // 状态持久化检查逻辑
 function initializePageState() {
-  // Step 1: 检查用户连接状态
-  const isConnected = checkConnectionStatus();
-  
-  if (isConnected === true) {
-    // 用户已接入 → 直接显示通电状态
-    renderConnectedState();
-  } else {
-    // 用户未接入 → 显示断电状态
-    renderDisconnectedState();
+  // Step 1: 检查用户连接状态（调用后端 API）
+  checkConnectionStatus()
+    .then(isConnected => {
+      if (isConnected === true) {
+        // 用户已接入 → 直接显示通电状态
+        renderConnectedState()
+      } else {
+        // 用户未接入 → 显示断电状态
+        renderDisconnectedState()
+      }
+    })
+    .catch(error => {
+      console.warn('Failed to check connection status:', error)
+      // 降级到断电状态
+      renderDisconnectedState()
+    })
+}
+
+// 后端状态检查
+async function checkConnectionStatus() {
+  try {
+    const response = await $fetch('/api/user/me')
+    
+    // 如果返回 200 且有用户数据，则为通电状态
+    if (response && response.user) {
+      return true
+    }
+    
+    return false
+  } catch (error) {
+    // 如果返回 401 或其他错误，则为断电状态（或游客态）
+    if (error.statusCode === 401) {
+      return false
+    }
+    
+    // 其他错误也当作断电处理
+    return false
   }
 }
+
+// server/api/user/me.get.ts
+export default defineEventHandler(async (event) => {
+  try {
+    const session = await getUserSession(event)
+    
+    if (!session || !session.user) {
+      throw createError({
+        statusCode: 401,
+        statusMessage: 'Not authenticated'
+      })
+    }
+    
+    // 获取用户详细信息
+    const user = await db.select()
+      .from(users)
+      .where(eq(users.id, session.user.id))
+      .limit(1)
+    
+    if (!user.length) {
+      throw createError({
+        statusCode: 404,
+        statusMessage: 'User not found'
+      })
+    }
+    
+    return {
+      user: {
+        id: user[0].id,
+        name: user[0].name,
+        email: user[0].email,
+        level: user[0].level,
+        xp: user[0].xp,
+        isPro: user[0].isPro,
+        avatarUrl: user[0].avatarUrl
+      },
+      connectionStatus: 'online'
+    }
+  } catch (error) {
+    // 返回 401 表示未登录（断电状态）
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'Authentication required'
+    })
+  }
+})
 ```
 
-**断电状态** (当 isConnected === false):
+**断电状态** (当 API 返回 401):
 - 背景色: 深邃黑 `#050505`
 - 显示: 闸刀开关、Logo 轮廓、闪烁文案
 - 隐藏: 菜单、CTA 按钮、氛围光、页脚
 
-**通电状态** (当 isConnected === true):
+**通电状态** (当 API 返回 200):
 - 文案: `> CLOUD_LAB_ONLINE. WELCOME TO THE FUTURE.`
 - 颜色: 荧光青 `#00FFC2`（表示已接通云端实验室）
 - 闸刀: 已在底部 (translateY: 100px)
@@ -157,53 +231,119 @@ const SIMPLIFIED_RITUAL_CONFIG = {
   ]
 }
 ```
-### FR-004: Guest Mode (游客模式)
+### FR-004: Guest Mode 与音频兼容性
 
 **简化的音频处理**:
 ```javascript
-// 简化的音频解锁
-const SIMPLE_AUDIO_CONFIG = {
-  // 在用户首次交互时解锁音频
-  unlockOnFirstInteraction: true,
+// 音频兼容性解决方案
+const AUDIO_COMPATIBILITY = {
+  // 使用 Howler.js 作为 Safari 兼容方案
+  audioLibrary: 'howler.js',
   
-  // 简化的音频文件管理
+  // 音频配置
   sounds: {
     switch_snap: {
-      src: '/sounds/switch-snap.wav',
+      src: ['/sounds/switch-snap.wav', '/sounds/switch-snap.mp3'],
       volume: 0.7,
-      preload: true
+      preload: true,
+      html5: true // 强制使用 HTML5 Audio，避免 Web Audio API 问题
     },
     electrical_hum: {
-      src: '/sounds/electrical-hum.wav', 
+      src: ['/sounds/electrical-hum.wav', '/sounds/electrical-hum.mp3'],
       volume: 0.4,
       loop: true,
-      preload: true
+      preload: true,
+      html5: true
     }
   },
   
-  // 降级策略：如果音频加载失败，静默继续
+  // iOS Safari 兼容性处理
+  iosCompatibility: {
+    enabled: true,
+    
+    // 在用户首次交互时解锁音频
+    unlockAudio: () => {
+      if (Howler.ctx && Howler.ctx.state === 'suspended') {
+        Howler.ctx.resume().then(() => {
+          console.log('Audio context resumed for iOS')
+        })
+      }
+    },
+    
+    // 检测 iOS 设备
+    isIOS: () => {
+      return /iPad|iPhone|iPod/.test(navigator.userAgent)
+    }
+  },
+  
+  // 降级策略
   fallback: {
     onAudioLoadError: 'continue-without-sound',
-    showAudioDisabledNotice: false
+    showAudioDisabledNotice: false,
+    
+    // 如果音频完全失败，显示视觉反馈
+    visualFeedbackOnly: {
+      enabled: true,
+      switchSnapEffect: 'css-animation-pulse',
+      humEffect: 'css-glow-animation'
+    }
   }
+}
+
+// 音频初始化
+const initializeAudio = () => {
+  // 检测音频支持
+  if (!Howler.codecs('wav') && !Howler.codecs('mp3')) {
+    console.warn('Audio not supported, using visual feedback only')
+    return false
+  }
+  
+  // iOS 特殊处理
+  if (AUDIO_COMPATIBILITY.iosCompatibility.isIOS()) {
+    // 监听首次用户交互
+    document.addEventListener('touchstart', () => {
+      AUDIO_COMPATIBILITY.iosCompatibility.unlockAudio()
+    }, { once: true })
+  }
+  
+  // 预加载音频
+  Object.entries(AUDIO_COMPATIBILITY.sounds).forEach(([key, config]) => {
+    try {
+      window.audioSounds = window.audioSounds || {}
+      window.audioSounds[key] = new Howl(config)
+    } catch (error) {
+      console.warn(`Failed to load sound: ${key}`, error)
+    }
+  })
+  
+  return true
 }
 
 // Guest 数据迁移逻辑
 const handleUserRegistration = async (newUserId) => {
-  const guestToken = localStorage.getItem('guest_token');
+  const guestToken = localStorage.getItem('guest_token')
   
   if (guestToken) {
-    // 合并游客数据到正式账户
-    await mergeGuestData(guestToken, newUserId);
-    
-    // 清理游客数据
-    localStorage.removeItem('guest_token');
-    localStorage.removeItem('knzn_connection_state');
-    
-    // 显示数据迁移成功提示
-    showNotification('你的学习进度已成功保存！', 'success');
+    try {
+      // 合并游客数据到正式账户
+      const result = await $fetch('/api/user/merge-guest', {
+        method: 'POST',
+        body: { guestToken }
+      })
+      
+      if (result.success) {
+        // 清理游客数据
+        localStorage.removeItem('guest_token')
+        localStorage.removeItem('knzn_connection_state')
+        
+        // 显示数据迁移成功提示
+        showNotification('你的学习进度已成功保存！', 'success')
+      }
+    } catch (error) {
+      console.error('Guest data merge failed:', error)
+    }
   }
-};
+}
 ```
 
 ### FR-005: 移动端优化

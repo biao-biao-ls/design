@@ -279,9 +279,9 @@ time.sleep(1)
 }
 ```
 
-### FR-002: 关卡进度跟踪
+### FR-002: 关卡进度跟踪与后端判题
 
-**描述**: 实时显示用户在当前关卡中的进度，提供即时的成功/失败反馈
+**描述**: 实时显示用户在当前关卡中的进度，提供即时的成功/失败反馈。**判题逻辑在后端执行，防止作弊。**
 
 **进度追踪系统**:
 ```javascript
@@ -326,6 +326,132 @@ const PROGRESS_TRACKING = {
       hint: '💡 检查代码中的 GPIO 引脚号',
       color: '#FF6B35'
     }
+  }
+}
+
+// 后端判题 API
+// server/api/submit-level.post.ts
+export default defineEventHandler(async (event) => {
+  const body = await readBody(event)
+  const { lessonId, phaseId, submissionData, userCode } = body
+  
+  // 验证用户身份
+  const session = await getUserSession(event)
+  if (!session) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'Unauthorized'
+    })
+  }
+  
+  // 获取关卡配置
+  const lessonConfig = await getLessonConfig(lessonId, phaseId)
+  
+  // 执行判题逻辑
+  const result = await validateSubmission({
+    lessonConfig,
+    submissionData,
+    userCode
+  })
+  
+  if (result.passed) {
+    // 更新用户进度
+    await db.insert(progress).values({
+      userId: session.user.id,
+      lessonId,
+      phase: phaseId,
+      status: 'completed',
+      score: result.score,
+      completedAt: new Date()
+    })
+    
+    // 计算并更新 XP
+    const xpEarned = calculateXP(result.score, lessonConfig.difficulty)
+    await db.update(users)
+      .set({ 
+        xp: sql`${users.xp} + ${xpEarned}` 
+      })
+      .where(eq(users.id, session.user.id))
+    
+    return {
+      success: true,
+      passed: true,
+      score: result.score,
+      xpEarned,
+      feedback: '✨ 完美！继续下一步'
+    }
+  } else {
+    return {
+      success: true,
+      passed: false,
+      errors: result.errors,
+      hints: result.hints,
+      feedback: '⚠️ 再试一次，你可以的！'
+    }
+  }
+})
+
+// 判题逻辑函数
+async function validateSubmission({ lessonConfig, submissionData, userCode }) {
+  const errors = []
+  const hints = []
+  let score = 0
+  
+  // 1. 代码语法检查
+  const syntaxCheck = await validateSyntax(userCode, lessonConfig.language)
+  if (!syntaxCheck.valid) {
+    errors.push('代码语法错误')
+    hints.push(syntaxCheck.error)
+    return { passed: false, errors, hints, score: 0 }
+  }
+  
+  // 2. 串口输出检查
+  if (lessonConfig.validation.type === 'serial-output-check') {
+    const expectedOutputs = lessonConfig.validation.expectedOutputs
+    const actualOutputs = submissionData.serialOutputs || []
+    
+    for (const expected of expectedOutputs) {
+      if (actualOutputs.includes(expected)) {
+        score += 25
+      } else {
+        errors.push(`缺少预期输出: ${expected}`)
+        hints.push('检查串口输出语句')
+      }
+    }
+  }
+  
+  // 3. GPIO 状态检查
+  if (lessonConfig.validation.gpioChecks) {
+    const gpioStates = submissionData.gpioStates || []
+    
+    for (const check of lessonConfig.validation.gpioChecks) {
+      const actualState = gpioStates.find(
+        s => s.pin === check.pin && Math.abs(s.time - check.atTime) < 100
+      )
+      
+      if (actualState && actualState.state === check.expectedState) {
+        score += 25
+      } else {
+        errors.push(`GPIO ${check.pin} 状态不正确`)
+        hints.push(`检查 GPIO ${check.pin} 的配置`)
+      }
+    }
+  }
+  
+  // 4. 时序检查（防止作弊）
+  const timeSpent = submissionData.timeSpent || 0
+  if (timeSpent < 10000) { // 少于 10 秒
+    errors.push('完成时间异常')
+    return { passed: false, errors, hints, score: 0 }
+  }
+  
+  const passed = score >= 80 // 80 分及格
+  
+  return {
+    passed,
+    score,
+    errors,
+    hints
   }
 }
 ```
@@ -567,7 +693,133 @@ const WOKWI_INTEGRATION = {
 }
 ```
 
-### FR-004: 成就系统与分享功能
+### FR-004: Guest 数据合并与用户转化
+
+**描述**: 实现游客模式数据迁移，当游客注册后将 LocalStorage 数据合并到用户账户
+
+**Guest 数据合并逻辑**:
+```javascript
+// server/api/user/merge-guest.post.ts
+export default defineEventHandler(async (event) => {
+  const body = await readBody(event)
+  const { guestToken, guestProgress } = body
+  
+  // 验证用户身份
+  const session = await getUserSession(event)
+  if (!session) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'Unauthorized'
+    })
+  }
+  
+  try {
+    // 验证 guest token 的有效性
+    const guestData = await validateGuestToken(guestToken)
+    
+    if (guestData && guestProgress) {
+      // 合并学习进度
+      for (const progressItem of guestProgress) {
+        // 检查是否已存在该进度记录
+        const existing = await db.select()
+          .from(progress)
+          .where(
+            and(
+              eq(progress.userId, session.user.id),
+              eq(progress.lessonId, progressItem.lessonId),
+              eq(progress.phase, progressItem.phase)
+            )
+          )
+          .limit(1)
+        
+        if (!existing.length) {
+          // 插入新的进度记录
+          await db.insert(progress).values({
+            userId: session.user.id,
+            lessonId: progressItem.lessonId,
+            phase: progressItem.phase,
+            status: progressItem.status,
+            score: progressItem.score,
+            completedAt: progressItem.completedAt ? new Date(progressItem.completedAt) : null,
+            createdAt: new Date()
+          })
+        }
+      }
+      
+      // 计算总 XP 并更新用户
+      const totalXP = guestProgress
+        .filter(p => p.status === 'completed')
+        .reduce((sum, p) => sum + (p.score || 0), 0)
+      
+      if (totalXP > 0) {
+        await db.update(users)
+          .set({ 
+            xp: sql`${users.xp} + ${totalXP}` 
+          })
+          .where(eq(users.id, session.user.id))
+      }
+      
+      // 清理 guest token（可选）
+      await invalidateGuestToken(guestToken)
+      
+      return {
+        success: true,
+        mergedProgress: guestProgress.length,
+        xpAdded: totalXP,
+        message: '你的学习进度已成功保存！'
+      }
+    }
+    
+    return {
+      success: true,
+      mergedProgress: 0,
+      xpAdded: 0,
+      message: '没有找到需要合并的数据'
+    }
+    
+  } catch (error) {
+    console.error('Guest data merge failed:', error)
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Failed to merge guest data'
+    })
+  }
+})
+
+// 前端处理逻辑
+const handleUserRegistration = async (newUserId) => {
+  const guestToken = localStorage.getItem('guest_token')
+  const guestProgress = JSON.parse(localStorage.getItem('knzn_lesson_progress') || '[]')
+  
+  if (guestToken && guestProgress.length > 0) {
+    try {
+      const result = await $fetch('/api/user/merge-guest', {
+        method: 'POST',
+        body: {
+          guestToken,
+          guestProgress
+        }
+      })
+      
+      if (result.success) {
+        // 清理本地存储
+        localStorage.removeItem('guest_token')
+        localStorage.removeItem('knzn_lesson_progress')
+        localStorage.removeItem('knzn_connection_state')
+        
+        // 显示成功提示
+        showNotification(result.message, 'success')
+        
+        // 刷新用户数据
+        await refreshUserData()
+      }
+    } catch (error) {
+      console.error('Failed to merge guest data:', error)
+      showNotification('数据合并失败，但不影响继续学习', 'warning')
+    }
+  }
+}
+```
 
 **描述**: 基于完成度和正确性的成就系统，强化分享功能支持一键生成炫酷分享卡片
 
