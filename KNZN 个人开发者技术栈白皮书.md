@@ -78,10 +78,14 @@
 ```typescript
 // server/database/schema.ts
 import { pgTable, text, integer, boolean, timestamp, serial, jsonb } from 'drizzle-orm/pg-core'
+import { randomUUID } from 'crypto'
+
+// UUID 生成工具函数
+export const generateId = () => randomUUID()
 
 // 1. 用户与鉴权 (替代 Supabase auth.users)
 export const users = pgTable('users', {
-  id: text('id').primaryKey(), // UUID
+  id: text('id').primaryKey().$defaultFn(() => generateId()), // 应用层生成 UUID
   name: text('name').notNull(),
   email: text('email').unique().notNull(),
   avatarUrl: text('avatar_url'),

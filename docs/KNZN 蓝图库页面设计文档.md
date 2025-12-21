@@ -417,6 +417,8 @@ export const blueprints = pgTable('blueprints', {
   affiliateLinks: jsonb('affiliate_links').$type<{
     taobao?: string
     jd?: string
+    universal?: string // 通用搜索链接，避免空链接
+    default?: string   // 默认推荐链接
   }>(),
   
   // Pro 会员内容
@@ -536,24 +538,50 @@ export default defineEventHandler(async (event) => {
 })
 ```
 
-### 数据存储策略
+### BOM 智能表格重定向服务
 
-```
-PostgreSQL 数据库：
-- 蓝图基本信息：blueprints 表
-- 用户评价：blueprint_reviews 表
-- BOM 数据：JSON 字段存储
-- 联盟营销链接：JSON 字段存储
+```typescript
+// server/api/redirect/[platform].get.ts
+export default defineEventHandler(async (event) => {
+  const platform = getRouterParam(event, 'platform') // 'taobao' | 'jd'
+  const query = getQuery(event)
+  const { keyword } = query
+  
+  if (!keyword) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Missing keyword parameter'
+    })
+  }
+  
+  // 重定向 URL 规则（可随时更新，无需改数据库）
+  const redirectRules = {
+    taobao: `https://s.taobao.com/search?q=${encodeURIComponent(keyword)}`,
+    jd: `https://search.jd.com/Search?keyword=${encodeURIComponent(keyword)}`,
+    universal: `https://www.google.com/search?q=${encodeURIComponent(keyword + ' 购买')}`
+  }
+  
+  const redirectUrl = redirectRules[platform]
+  
+  if (!redirectUrl) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: 'Platform not supported'
+    })
+  }
+  
+  // 记录点击统计（可选）
+  await recordAffiliateClick(platform, keyword)
+  
+  // 302 重定向
+  await sendRedirect(event, redirectUrl, 302)
+})
 
-静态资源 (CDN)：
-- 蓝图文件：Vercel Blob 或 Cloudflare R2
-- 图片视频：Vercel Blob 或 Cloudflare R2
-- 缓存策略：CDN 边缘缓存 24 小时
-
-缓存策略：
-- 蓝图列表：Redis 缓存 1 小时
-- 蓝图详情：Redis 缓存 6 小时
-- 统计数据：每日批量更新
+// 前端使用方式
+const handleBOMSearch = (platform: string, keyword: string) => {
+  // 通过重定向服务，避免硬编码 URL
+  window.open(`/api/redirect/${platform}?keyword=${encodeURIComponent(keyword)}`, '_blank')
+}
 ```
 
 ## 📋 实施计划

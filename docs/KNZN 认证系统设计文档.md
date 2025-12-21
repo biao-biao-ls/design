@@ -292,13 +292,15 @@ const ANTI_CHEAT_SYSTEM = {
   }
 }
 
-// 徽章颁发函数
+// 徽章颁发函数（使用短 ID）
+import { nanoid } from 'nanoid'
+
 async function awardBadge(userId: string, badgeType: string) {
-  const certificateId = generateUUID()
+  const certificateId = nanoid(8) // 生成 8 位短 ID，如 'Xy9AzP2k'
   const verifyHash = generateVerifyHash(userId, badgeType, certificateId)
   
   await db.insert(certificates).values({
-    id: certificateId,
+    id: certificateId, // 短 ID 而非长 UUID
     userId,
     badgeType,
     verifyHash,
@@ -317,6 +319,52 @@ async function awardBadge(userId: string, badgeType: string) {
   }
   
   return certificateId
+}
+
+// 证书验证页面
+// server/api/cert/[id].get.ts
+export default defineEventHandler(async (event) => {
+  const certificateId = getRouterParam(event, 'id') // 短 ID
+  
+  const certificate = await db.select({
+    id: certificates.id,
+    badgeType: certificates.badgeType,
+    issuedAt: certificates.issuedAt,
+    verifyHash: certificates.verifyHash,
+    userName: users.name,
+    userLevel: users.level
+  })
+  .from(certificates)
+  .leftJoin(users, eq(certificates.userId, users.id))
+  .where(eq(certificates.id, certificateId))
+  .limit(1)
+  
+  if (!certificate.length) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: 'Certificate not found'
+    })
+  }
+  
+  return {
+    certificate: certificate[0],
+    verifyUrl: `https://knzn.net/c/${certificateId}`, // 短链接格式
+    isValid: true
+  }
+})
+
+// 前端证书展示
+const CertificateDisplay = ({ certificateId }) => {
+  return (
+    <div className="certificate">
+      <h2>KNZN 学习证书</h2>
+      <p>证书编号：{certificateId}</p>
+      <p>验证链接：knzn.net/c/{certificateId}</p>
+      <div className="qr-code">
+        <QRCode value={`https://knzn.net/c/${certificateId}`} />
+      </div>
+    </div>
+  )
 }
 
 // 检查用户是否已有徽章

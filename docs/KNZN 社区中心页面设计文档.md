@@ -498,6 +498,63 @@ Level 系统：
   • � 举报（垃圾/骚扰 /垃圾/不恰当）
 ```
 
+## 📊 成本控制与图片存储
+
+### 图片存储策略
+
+```typescript
+// 前端图片压缩和上传
+import Compressor from 'compressorjs'
+
+const handleImageUpload = async (file: File) => {
+  // 1. 前端压缩（必须）
+  const compressedFile = await new Promise<File>((resolve, reject) => {
+    new Compressor(file, {
+      quality: 0.8,
+      maxWidth: 1200,
+      maxHeight: 800,
+      convertSize: 500000, // 500KB 以上转为 JPEG
+      success: resolve,
+      error: reject,
+    })
+  })
+  
+  // 2. 大小检查
+  if (compressedFile.size > 500 * 1024) { // 500KB 限制
+    throw new Error('图片过大，请选择更小的图片或降低质量')
+  }
+  
+  // 3. 上传到 Cloudflare R2
+  const formData = new FormData()
+  formData.append('image', compressedFile)
+  
+  const response = await $fetch('/api/upload/image', {
+    method: 'POST',
+    body: formData
+  })
+  
+  return response.url
+}
+
+// 成本控制配置
+const STORAGE_CONFIG = {
+  maxFileSize: 500 * 1024, // 500KB 单文件限制
+  maxUserStorage: 50 * 1024 * 1024, // 50MB 用户总限制
+  allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
+  
+  // Cloudflare R2 成本控制
+  costControl: {
+    maxStorageGB: 10, // 最大存储 10GB
+    maxBandwidthGB: 100, // 每月最大流量 100GB
+    autoCleanup: {
+      enabled: true,
+      deleteAfterDays: 365, // 1年后自动删除
+      orphanedFilesCleanup: true // 清理无引用的文件
+    }
+  }
+}
+```
+
 ## 📊 社区指标 & KPI
 
 | 指标 | 目标 | 监测频率 |

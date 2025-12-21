@@ -438,12 +438,16 @@ async function validateSubmission({ lessonConfig, submissionData, userCode }) {
     }
   }
   
-  // 4. 时序检查（防止作弊）
+  // 4. 时序检查（防止作弊，但不过度）
   const timeSpent = submissionData.timeSpent || 0
   if (timeSpent < 10000) { // 少于 10 秒
     errors.push('完成时间异常')
     return { passed: false, errors, hints, score: 0 }
   }
+  
+  // 🚫 MVP 阶段移除行为分析
+  // 原因：极易误判，影响正常用户体验
+  // 只依赖 Custom Chip 结果验证和时间戳签名即可防御 99% 作弊
   
   const passed = score >= 80 // 80 分及格
   
@@ -476,16 +480,42 @@ const WOKWI_INTEGRATION = {
     position: 'side-panel',
     width: '300px',
     
-    // ⚠️ 性能优化：避免 iframe 通信过载
+    // ⚡ 性能优化：使用 RAF + 状态锁
     performanceOptimization: {
-      throttleInterval: 100, // 限制更新频率为 100ms
-      maxUpdatesPerSecond: 10,
       useRequestAnimationFrame: true,
+      stateLock: true, // 防止重复更新
+      maxFPS: 30, // 限制最大帧率
       
       // 动画由 CSS 驱动，JS 只负责状态切换
       animationStrategy: 'css-driven',
       jsRole: 'state-trigger-only'
     },
+    
+    // 状态锁实现
+    updateWithLock: (() => {
+      let isUpdating = false
+      let pendingUpdate = null
+      
+      return (newState) => {
+        if (isUpdating) {
+          pendingUpdate = newState
+          return
+        }
+        
+        isUpdating = true
+        requestAnimationFrame(() => {
+          updateXRayVisualization(newState)
+          isUpdating = false
+          
+          // 处理待更新状态
+          if (pendingUpdate) {
+            const nextState = pendingUpdate
+            pendingUpdate = null
+            this.updateWithLock(nextState)
+          }
+        })
+      }
+    })(),
     
     visualizations: [
       {
@@ -786,10 +816,26 @@ export default defineEventHandler(async (event) => {
   }
 })
 
-// 前端处理逻辑
+// 增强的 Guest 数据合并逻辑（支持魔法链接）
 const handleUserRegistration = async (newUserId) => {
-  const guestToken = localStorage.getItem('guest_token')
-  const guestProgress = JSON.parse(localStorage.getItem('knzn_lesson_progress') || '[]')
+  // 1. 检查是否有待合并的进度数据（来自魔法链接）
+  const pendingMerge = sessionStorage.getItem('pending_guest_merge')
+  let guestToken = localStorage.getItem('guest_token')
+  let guestProgress = JSON.parse(localStorage.getItem('knzn_lesson_progress') || '[]')
+  
+  // 如果有魔法链接数据，优先使用
+  if (pendingMerge) {
+    try {
+      const pendingData = JSON.parse(pendingMerge)
+      guestToken = pendingData.guestToken
+      guestProgress = pendingData.progress || []
+      
+      // 清理临时数据
+      sessionStorage.removeItem('pending_guest_merge')
+    } catch (error) {
+      console.warn('Failed to parse pending merge data:', error)
+    }
+  }
   
   if (guestToken && guestProgress.length > 0) {
     try {
@@ -808,7 +854,10 @@ const handleUserRegistration = async (newUserId) => {
         localStorage.removeItem('knzn_connection_state')
         
         // 显示成功提示
-        showNotification(result.message, 'success')
+        showNotification(
+          `成功合并 ${result.mergedProgress} 条学习记录，获得 ${result.xpAdded} XP！`, 
+          'success'
+        )
         
         // 刷新用户数据
         await refreshUserData()
@@ -1133,6 +1182,56 @@ const LAYOUT_SYSTEM = {
 │  📊 进度追踪                    │
 └─────────────────────────────────┘
     `,
+    
+    // 魔法链接与 Guest 数据整合
+    magicLinkIntegration: {
+      enabled: true,
+      
+      // 生成带进度的魔法链接
+      generateProgressLink: () => {
+        const guestToken = localStorage.getItem('guest_token')
+        const guestProgress = localStorage.getItem('knzn_lesson_progress')
+        
+        if (guestToken && guestProgress) {
+          const progressToken = btoa(JSON.stringify({
+            guestToken,
+            progress: JSON.parse(guestProgress),
+            timestamp: Date.now()
+          }))
+          
+          return `${window.location.origin}?progress=${progressToken}`
+        }
+        
+        return window.location.origin
+      },
+      
+      // 电脑端处理进度链接
+      handleProgressLink: async () => {
+        const urlParams = new URLSearchParams(window.location.search)
+        const progressToken = urlParams.get('progress')
+        
+        if (progressToken) {
+          try {
+            const progressData = JSON.parse(atob(progressToken))
+            
+            // 检查时效性（24小时内有效）
+            if (Date.now() - progressData.timestamp < 24 * 60 * 60 * 1000) {
+              // 存储到临时变量，等用户登录后合并
+              sessionStorage.setItem('pending_guest_merge', JSON.stringify(progressData))
+              
+              // 清理 URL
+              window.history.replaceState({}, document.title, window.location.pathname)
+              
+              return progressData
+            }
+          } catch (error) {
+            console.warn('Invalid progress token:', error)
+          }
+        }
+        
+        return null
+      }
+    },
     
     adaptations: {
       wokwiIframe: {
