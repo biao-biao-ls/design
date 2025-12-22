@@ -1555,3 +1555,638 @@ const getConversionFunnel = async (startDate: Date) => {
 **商业模式**: SaaS + 联盟营销 + 全球合规
 
 这份商业化指南专为 KNZN 项目的全球市场设计，确保在追求商业成功的同时完全符合 GDPR/CCPA 等法规要求，并通过自动化系统最大化运营效率。
+## 🔒 安全防护系统 (BOM 搜索防护)
+
+### 搜索关键词安全校验
+
+```typescript
+// server/utils/security-sanitizer.ts
+
+// 🔒 搜索关键词安全校验器
+export const sanitizeKeyword = (keyword: string): { 
+  sanitized: string; 
+  isValid: boolean; 
+  violations: string[] 
+} => {
+  const violations: string[] = []
+  
+  // 🧹 基础清理
+  let sanitized = keyword.trim()
+  
+  // 🚫 长度限制
+  if (sanitized.length > 100) {
+    sanitized = sanitized.substring(0, 100)
+    violations.push('Keyword truncated to 100 characters')
+  }
+  
+  if (sanitized.length < 2) {
+    return {
+      sanitized: '',
+      isValid: false,
+      violations: ['Keyword too short (minimum 2 characters)']
+    }
+  }
+  
+  // 🔍 正则校验：仅允许中英文数字和基本符号
+  const allowedPattern = /^[a-zA-Z0-9\u4e00-\u9fa5\s\-_\.]+$/
+  if (!allowedPattern.test(sanitized)) {
+    violations.push('Invalid characters detected')
+    // 移除不允许的字符
+    sanitized = sanitized.replace(/[^a-zA-Z0-9\u4e00-\u9fa5\s\-_\.]/g, '')
+  }
+  
+  // 🚫 XSS 防护：检测脚本注入
+  const xssPatterns = [
+    /<script[^>]*>.*?<\/script>/gi,
+    /javascript:/gi,
+    /on\w+\s*=/gi,
+    /<iframe[^>]*>/gi,
+    /data:text\/html/gi,
+    /vbscript:/gi
+  ]
+  
+  for (const pattern of xssPatterns) {
+    if (pattern.test(sanitized)) {
+      violations.push('Potential XSS attack detected')
+      sanitized = sanitized.replace(pattern, '')
+    }
+  }
+  
+  // 🚫 开放重定向防护：检测 URL 模式
+  const redirectPatterns = [
+    /https?:\/\//gi,
+    /ftp:\/\//gi,
+    /file:\/\//gi,
+    /\.\.\/+/g,
+    /\/\/+/g
+  ]
+  
+  for (const pattern of redirectPatterns) {
+    if (pattern.test(sanitized)) {
+      violations.push('Potential open redirect detected')
+      sanitized = sanitized.replace(pattern, '')
+    }
+  }
+  
+  // 🚫 SQL 注入防护
+  const sqlPatterns = [
+    /(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|UNION)\b)/gi,
+    /('|(\\')|(;)|(--)|(\|)|(\*)|(%)|(\+))/g,
+    /(\b(OR|AND)\b.*=)/gi
+  ]
+  
+  for (const pattern of sqlPatterns) {
+    if (pattern.test(sanitized)) {
+      violations.push('Potential SQL injection detected')
+      sanitized = sanitized.replace(pattern, '')
+    }
+  }
+  
+  // 🚫 路径遍历防护
+  const pathTraversalPatterns = [
+    /\.\.\//g,
+    /\.\.\\+/g,
+    /%2e%2e%2f/gi,
+    /%2e%2e%5c/gi
+  ]
+  
+  for (const pattern of pathTraversalPatterns) {
+    if (pattern.test(sanitized)) {
+      violations.push('Path traversal attempt detected')
+      sanitized = sanitized.replace(pattern, '')
+    }
+  }
+  
+  // 🧹 最终清理
+  sanitized = sanitized.trim()
+  
+  return {
+    sanitized,
+    isValid: sanitized.length >= 2 && violations.length === 0,
+    violations
+  }
+}
+
+// 🔍 BOM 搜索安全中间件
+export const validateBOMSearch = (searchQuery: string): {
+  isValid: boolean;
+  sanitizedQuery: string;
+  securityReport: {
+    violations: string[];
+    riskLevel: 'low' | 'medium' | 'high';
+    blocked: boolean;
+  }
+} => {
+  const result = sanitizeKeyword(searchQuery)
+  
+  // 🚨 风险等级评估
+  let riskLevel: 'low' | 'medium' | 'high' = 'low'
+  let blocked = false
+  
+  if (result.violations.length > 0) {
+    const highRiskViolations = [
+      'Potential XSS attack detected',
+      'Potential open redirect detected',
+      'Potential SQL injection detected',
+      'Path traversal attempt detected'
+    ]
+    
+    const hasHighRisk = result.violations.some(v => 
+      highRiskViolations.some(hr => v.includes(hr))
+    )
+    
+    if (hasHighRisk) {
+      riskLevel = 'high'
+      blocked = true
+    } else if (result.violations.length > 2) {
+      riskLevel = 'medium'
+    }
+  }
+  
+  return {
+    isValid: result.isValid && !blocked,
+    sanitizedQuery: result.sanitized,
+    securityReport: {
+      violations: result.violations,
+      riskLevel,
+      blocked
+    }
+  }
+}
+```
+
+### BOM 搜索 API 安全实现
+
+```typescript
+// server/api/bom/search.post.ts
+export default defineEventHandler(async (event) => {
+  const body = await readBody(event)
+  const { query, category, priceRange } = body
+  
+  // 🔒 安全校验
+  const securityCheck = validateBOMSearch(query)
+  
+  if (!securityCheck.isValid) {
+    // 📝 记录安全事件
+    await logSecurityEvent({
+      type: 'bom_search_blocked',
+      originalQuery: query,
+      violations: securityCheck.securityReport.violations,
+      riskLevel: securityCheck.securityReport.riskLevel,
+      userIP: getClientIP(event),
+      userAgent: getHeader(event, 'user-agent'),
+      timestamp: new Date()
+    })
+    
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Invalid search query',
+      data: {
+        violations: securityCheck.securityReport.violations,
+        riskLevel: securityCheck.securityReport.riskLevel
+      }
+    })
+  }
+  
+  // ✅ 使用清理后的查询进行搜索
+  const sanitizedQuery = securityCheck.sanitizedQuery
+  
+  try {
+    // 🔍 执行安全的 BOM 搜索
+    const searchResults = await performSecureBOMSearch({
+      query: sanitizedQuery,
+      category: sanitizeCategory(category),
+      priceRange: validatePriceRange(priceRange)
+    })
+    
+    // 📊 记录搜索统计
+    await recordSearchAnalytics({
+      query: sanitizedQuery,
+      category,
+      resultCount: searchResults.length,
+      userIP: getClientIP(event)
+    })
+    
+    return {
+      success: true,
+      query: sanitizedQuery,
+      results: searchResults,
+      securityInfo: {
+        sanitized: query !== sanitizedQuery,
+        violations: securityCheck.securityReport.violations
+      }
+    }
+  } catch (error) {
+    console.error('BOM search error:', error)
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Search failed'
+    })
+  }
+})
+
+// 🔍 安全的 BOM 搜索实现
+const performSecureBOMSearch = async (params: {
+  query: string;
+  category?: string;
+  priceRange?: { min: number; max: number };
+}) => {
+  const { query, category, priceRange } = params
+  
+  // 🏪 安全的供应商 API 调用
+  const suppliers = [
+    {
+      name: 'DigiKey',
+      apiUrl: 'https://api.digikey.com/Search/v3/Products/Keyword',
+      affiliateId: process.env.DIGIKEY_AFFILIATE_ID
+    },
+    {
+      name: 'Mouser',
+      apiUrl: 'https://api.mouser.com/api/v1/search/keyword',
+      affiliateId: process.env.MOUSER_AFFILIATE_ID
+    }
+  ]
+  
+  const results = []
+  
+  for (const supplier of suppliers) {
+    try {
+      // 🔒 构建安全的 API 请求
+      const searchParams = new URLSearchParams({
+        keyword: query,
+        ...(category && { category }),
+        ...(priceRange && { 
+          minPrice: priceRange.min.toString(),
+          maxPrice: priceRange.max.toString()
+        }),
+        affiliate: supplier.affiliateId || ''
+      })
+      
+      // 🌐 调用供应商 API
+      const response = await fetch(`${supplier.apiUrl}?${searchParams}`, {
+        headers: {
+          'User-Agent': 'KNZN-Platform/1.0',
+          'Accept': 'application/json'
+        },
+        timeout: 5000 // 5秒超时
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        
+        // 🧹 清理和标准化结果
+        const cleanResults = sanitizeSearchResults(data, supplier.name)
+        results.push(...cleanResults)
+      }
+    } catch (error) {
+      console.error(`${supplier.name} search error:`, error)
+      // 继续其他供应商的搜索
+    }
+  }
+  
+  // 🔄 去重和排序
+  return deduplicateAndSort(results)
+}
+
+// 🧹 清理搜索结果
+const sanitizeSearchResults = (rawResults: any, supplierName: string) => {
+  if (!Array.isArray(rawResults.products)) {
+    return []
+  }
+  
+  return rawResults.products.map((product: any) => ({
+    id: sanitizeString(product.id || ''),
+    name: sanitizeString(product.name || ''),
+    description: sanitizeString(product.description || ''),
+    price: validatePrice(product.price),
+    currency: sanitizeString(product.currency || 'USD'),
+    availability: sanitizeString(product.availability || ''),
+    supplier: supplierName,
+    // 🔗 生成安全的联盟链接
+    affiliateUrl: generateSafeAffiliateUrl(product.url, supplierName),
+    datasheet: sanitizeUrl(product.datasheet),
+    image: sanitizeUrl(product.image),
+    specifications: sanitizeSpecifications(product.specifications)
+  })).filter(product => product.id && product.name) // 过滤无效结果
+}
+
+// 🔗 生成安全的联盟链接
+const generateSafeAffiliateUrl = (originalUrl: string, supplier: string): string => {
+  if (!originalUrl || typeof originalUrl !== 'string') {
+    return ''
+  }
+  
+  // 🔍 验证 URL 格式
+  try {
+    const url = new URL(originalUrl)
+    
+    // 🚫 仅允许 HTTPS 和已知供应商域名
+    const allowedDomains = [
+      'digikey.com',
+      'mouser.com',
+      'element14.com',
+      'rs-online.com',
+      'aliexpress.com'
+    ]
+    
+    const isAllowedDomain = allowedDomains.some(domain => 
+      url.hostname.endsWith(domain)
+    )
+    
+    if (url.protocol !== 'https:' || !isAllowedDomain) {
+      return ''
+    }
+    
+    // 🏷️ 添加联盟标识
+    const affiliateParams = getAffiliateParams(supplier)
+    if (affiliateParams) {
+      Object.entries(affiliateParams).forEach(([key, value]) => {
+        url.searchParams.set(key, value)
+      })
+    }
+    
+    return url.toString()
+  } catch {
+    return ''
+  }
+}
+
+// 🏷️ 获取联盟参数
+const getAffiliateParams = (supplier: string): Record<string, string> | null => {
+  const affiliateConfig = {
+    'DigiKey': {
+      'aid': process.env.DIGIKEY_AFFILIATE_ID || '',
+      'utm_source': 'knzn',
+      'utm_medium': 'affiliate'
+    },
+    'Mouser': {
+      'partnumber': process.env.MOUSER_AFFILIATE_ID || '',
+      'utm_source': 'knzn'
+    }
+  }
+  
+  return affiliateConfig[supplier] || null
+}
+
+// 📝 记录安全事件
+const logSecurityEvent = async (event: {
+  type: string;
+  originalQuery: string;
+  violations: string[];
+  riskLevel: string;
+  userIP: string;
+  userAgent?: string;
+  timestamp: Date;
+}) => {
+  await db.insert(securityLogs).values({
+    id: nanoid(),
+    eventType: event.type,
+    severity: event.riskLevel,
+    details: JSON.stringify({
+      originalQuery: event.originalQuery,
+      violations: event.violations,
+      userAgent: event.userAgent
+    }),
+    userIP: event.userIP,
+    createdAt: event.timestamp
+  })
+  
+  // 🚨 高风险事件立即告警
+  if (event.riskLevel === 'high') {
+    await sendSecurityAlert(event)
+  }
+}
+
+// 🚨 发送安全告警
+const sendSecurityAlert = async (event: any) => {
+  await sendEmail({
+    to: 'security@knzn.net',
+    template: 'security-alert',
+    data: {
+      eventType: event.type,
+      riskLevel: event.riskLevel,
+      violations: event.violations,
+      userIP: event.userIP,
+      timestamp: event.timestamp.toISOString()
+    }
+  })
+}
+```
+
+### 前端安全搜索组件
+
+```vue
+<!-- components/SecureBOMSearch.vue -->
+<template>
+  <div class="secure-bom-search">
+    <div class="search-container">
+      <form @submit.prevent="performSearch" class="search-form">
+        <div class="input-group">
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="Search for components (e.g., Arduino Uno, resistor 220Ω)"
+            class="search-input"
+            :class="{ 'error': hasSecurityWarning }"
+            maxlength="100"
+            @input="validateInput"
+          />
+          <button 
+            type="submit" 
+            :disabled="!isValidQuery || searching"
+            class="search-btn"
+          >
+            <Icon v-if="searching" name="loading" class="animate-spin" />
+            <Icon v-else name="search" />
+            Search
+          </button>
+        </div>
+        
+        <!-- 🚨 安全警告 -->
+        <div v-if="securityWarning" class="security-warning">
+          <Icon name="shield-exclamation" class="text-yellow-500" />
+          <span>{{ securityWarning }}</span>
+        </div>
+        
+        <!-- ✅ 输入提示 -->
+        <div class="input-hints">
+          <span class="hint">💡 Try: "Arduino Nano", "LED 5mm red", "Capacitor 100uF"</span>
+        </div>
+      </form>
+    </div>
+    
+    <!-- 🔍 搜索结果 -->
+    <div v-if="searchResults.length > 0" class="search-results">
+      <div class="results-header">
+        <h3>Found {{ searchResults.length }} components</h3>
+        <div v-if="searchInfo.sanitized" class="sanitization-notice">
+          <Icon name="shield-check" class="text-green-500" />
+          <span>Search query was automatically cleaned for security</span>
+        </div>
+      </div>
+      
+      <div class="results-grid">
+        <div 
+          v-for="component in searchResults"
+          :key="component.id"
+          class="component-card"
+        >
+          <div class="component-image">
+            <img 
+              :src="component.image || '/images/component-placeholder.png'"
+              :alt="component.name"
+              loading="lazy"
+            />
+          </div>
+          
+          <div class="component-info">
+            <h4>{{ component.name }}</h4>
+            <p class="description">{{ component.description }}</p>
+            
+            <div class="component-details">
+              <div class="price">
+                <span class="amount">{{ component.price }}</span>
+                <span class="currency">{{ component.currency }}</span>
+              </div>
+              <div class="supplier">{{ component.supplier }}</div>
+            </div>
+            
+            <div class="component-actions">
+              <a 
+                :href="component.affiliateUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="buy-btn"
+                @click="trackPurchaseClick(component)"
+              >
+                <Icon name="external-link" />
+                View on {{ component.supplier }}
+              </a>
+              
+              <button 
+                @click="addToBOM(component)"
+                class="add-btn"
+              >
+                <Icon name="plus" />
+                Add to BOM
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+const searchQuery = ref('')
+const searching = ref(false)
+const searchResults = ref([])
+const securityWarning = ref('')
+const hasSecurityWarning = ref(false)
+const isValidQuery = ref(false)
+const searchInfo = ref({ sanitized: false })
+
+// 🔍 输入验证 (客户端预检)
+const validateInput = () => {
+  const query = searchQuery.value.trim()
+  
+  // 🧹 基础验证
+  isValidQuery.value = query.length >= 2 && query.length <= 100
+  
+  // 🚫 简单的客户端安全检查
+  const suspiciousPatterns = [
+    /<script/i,
+    /javascript:/i,
+    /on\w+=/i,
+    /https?:\/\//i
+  ]
+  
+  const hasSuspiciousContent = suspiciousPatterns.some(pattern => 
+    pattern.test(query)
+  )
+  
+  if (hasSuspiciousContent) {
+    securityWarning.value = 'Invalid characters detected. Please use only component names and specifications.'
+    hasSecurityWarning.value = true
+    isValidQuery.value = false
+  } else {
+    securityWarning.value = ''
+    hasSecurityWarning.value = false
+  }
+}
+
+// 🔍 执行搜索
+const performSearch = async () => {
+  if (!isValidQuery.value || searching.value) return
+  
+  searching.value = true
+  searchResults.value = []
+  
+  try {
+    const response = await $fetch('/api/bom/search', {
+      method: 'POST',
+      body: {
+        query: searchQuery.value.trim(),
+        category: 'all'
+      }
+    })
+    
+    if (response.success) {
+      searchResults.value = response.results
+      searchInfo.value = response.securityInfo
+      
+      // 📊 记录搜索事件
+      trackSearchEvent(response.query, response.results.length)
+    }
+  } catch (error) {
+    console.error('Search error:', error)
+    
+    if (error.data?.violations) {
+      securityWarning.value = 'Search blocked for security reasons. Please refine your query.'
+      hasSecurityWarning.value = true
+    } else {
+      alert('Search failed. Please try again.')
+    }
+  } finally {
+    searching.value = false
+  }
+}
+
+// 📊 跟踪搜索事件
+const trackSearchEvent = (query: string, resultCount: number) => {
+  // 发送分析事件到后端
+  $fetch('/api/analytics/search', {
+    method: 'POST',
+    body: {
+      query,
+      resultCount,
+      timestamp: new Date().toISOString()
+    }
+  }).catch(() => {
+    // 静默失败，不影响用户体验
+  })
+}
+
+// 🛒 添加到 BOM
+const addToBOM = (component: any) => {
+  // 实现添加到 BOM 逻辑
+  console.log('Adding to BOM:', component)
+}
+
+// 📊 跟踪购买点击
+const trackPurchaseClick = (component: any) => {
+  // 跟踪联盟链接点击
+  $fetch('/api/analytics/affiliate-click', {
+    method: 'POST',
+    body: {
+      componentId: component.id,
+      supplier: component.supplier,
+      price: component.price
+    }
+  }).catch(() => {
+    // 静默失败
+  })
+}
+</script>
+```

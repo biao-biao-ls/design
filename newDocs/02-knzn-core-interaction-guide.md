@@ -1325,16 +1325,21 @@ const handleWokwiMessage = (event: MessageEvent) => {
   switch (type) {
     case 'wokwi-ready':
       console.log('✅ Wokwi simulator ready')
+      // 🔧 初始化 Custom Chip 和 X-Ray 功能
+      initializeCustomChips()
+      setupXRayView()
       break
       
     case 'simulation-started':
       isRunning.value = true
       addSerialLine('Simulation started', 'info')
+      startXRayMonitoring()
       break
       
     case 'simulation-stopped':
       isRunning.value = false
       addSerialLine('Simulation stopped', 'info')
+      stopXRayMonitoring()
       break
       
     case 'serial-output':
@@ -1345,9 +1350,241 @@ const handleWokwiMessage = (event: MessageEvent) => {
       handleComponentChange(data)
       break
       
+    case 'gpio-state-changed':
+      // 🔍 X-Ray 视图 GPIO 状态更新 (节流处理)
+      handleGPIOStateChange(data)
+      break
+      
+    case 'custom-chip-event':
+      // 🔧 Custom Chip 事件处理
+      handleCustomChipEvent(data)
+      break
+      
     case 'error':
       addSerialLine(`Error: ${data.message}`, 'error')
       break
+  }
+}
+
+// 🔧 初始化 Custom Chip 功能
+const initializeCustomChips = () => {
+  if (!wokwiFrame.value?.contentWindow) return
+  
+  // 📤 注册虚拟逻辑分析仪芯片
+  wokwiFrame.value.contentWindow.postMessage({
+    type: 'register-custom-chip',
+    data: {
+      chipId: 'knzn-logic-analyzer',
+      definition: {
+        name: 'KNZN Logic Analyzer',
+        pins: [
+          { name: 'CH0', type: 'input' },
+          { name: 'CH1', type: 'input' },
+          { name: 'CH2', type: 'input' },
+          { name: 'CH3', type: 'input' },
+          { name: 'CLK', type: 'input' },
+          { name: 'TRIGGER', type: 'input' }
+        ],
+        behavior: `
+          // Custom Chip 逻辑分析仪实现
+          class KNZNLogicAnalyzer {
+            constructor() {
+              this.samples = [];
+              this.sampleRate = 1000000; // 1MHz
+              this.triggerLevel = 1;
+              this.isTriggered = false;
+            }
+            
+            onPinChange(pin, value, timestamp) {
+              // 🎯 复杂判题逻辑：检测特定波形模式
+              if (pin === 'TRIGGER' && value === this.triggerLevel && !this.isTriggered) {
+                this.isTriggered = true;
+                this.startCapture(timestamp);
+              }
+              
+              if (this.isTriggered) {
+                this.samples.push({
+                  pin,
+                  value,
+                  timestamp: timestamp - this.triggerTime
+                });
+                
+                // 📊 分析波形模式
+                this.analyzePattern();
+              }
+            }
+            
+            analyzePattern() {
+              // 🎯 检测 SPI 通信模式
+              if (this.detectSPIPattern()) {
+                this.sendEvent('spi-detected', { samples: this.samples });
+              }
+              
+              // 🎯 检测 I2C 通信模式
+              if (this.detectI2CPattern()) {
+                this.sendEvent('i2c-detected', { samples: this.samples });
+              }
+            }
+            
+            detectSPIPattern() {
+              // SPI 模式检测逻辑
+              const clockEdges = this.samples.filter(s => s.pin === 'CLK');
+              return clockEdges.length > 16; // 至少16个时钟周期
+            }
+          }
+        `
+      }
+    }
+  }, '*')
+}
+
+// 🔍 设置 X-Ray 视图 (防内存泄漏优化)
+const xrayState = ref({
+  isActive: false,
+  updateLock: false,
+  lastUpdate: 0,
+  gpioStates: new Map(),
+  animationFrame: null
+})
+
+const setupXRayView = () => {
+  // 🔒 状态锁初始化
+  xrayState.value.updateLock = false
+  xrayState.value.gpioStates.clear()
+}
+
+// 🔍 X-Ray 视图 GPIO 状态处理 (节流 + 状态锁)
+const handleGPIOStateChange = (data: any) => {
+  const now = performance.now()
+  
+  // 🚫 防止高频更新导致内存泄漏 (最小间隔 16ms = 60fps)
+  if (now - xrayState.value.lastUpdate < 16) {
+    return
+  }
+  
+  // 🔒 状态锁检查
+  if (xrayState.value.updateLock) {
+    return
+  }
+  
+  xrayState.value.updateLock = true
+  xrayState.value.lastUpdate = now
+  
+  // 📊 使用 requestAnimationFrame 优化渲染
+  if (xrayState.value.animationFrame) {
+    cancelAnimationFrame(xrayState.value.animationFrame)
+  }
+  
+  xrayState.value.animationFrame = requestAnimationFrame(() => {
+    try {
+      // 🔄 更新 GPIO 状态
+      xrayState.value.gpioStates.set(data.pin, {
+        value: data.value,
+        timestamp: data.timestamp,
+        voltage: data.voltage || 0
+      })
+      
+      // 🎨 更新 X-Ray 视觉效果
+      updateXRayVisualization(data)
+      
+    } finally {
+      // 🔓 释放状态锁
+      xrayState.value.updateLock = false
+    }
+  })
+}
+
+// 🎨 X-Ray 视觉效果更新 (优化版)
+const updateXRayVisualization = (data: any) => {
+  const xrayContainer = document.querySelector('.xray-overlay')
+  if (!xrayContainer) return
+  
+  // 🔍 创建或更新 GPIO 指示器
+  let indicator = xrayContainer.querySelector(`[data-pin="${data.pin}"]`)
+  if (!indicator) {
+    indicator = document.createElement('div')
+    indicator.className = 'gpio-indicator'
+    indicator.setAttribute('data-pin', data.pin)
+    xrayContainer.appendChild(indicator)
+  }
+  
+  // 🎨 根据电压值设置颜色和亮度
+  const voltage = data.voltage || 0
+  const intensity = Math.min(voltage / 5.0, 1.0) // 假设最大5V
+  
+  indicator.style.cssText = `
+    position: absolute;
+    left: ${data.x || 0}px;
+    top: ${data.y || 0}px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: radial-gradient(circle, 
+      rgba(0, 255, 136, ${intensity}) 0%, 
+      rgba(0, 255, 136, ${intensity * 0.3}) 70%, 
+      transparent 100%);
+    box-shadow: 0 0 ${intensity * 10}px rgba(0, 255, 136, ${intensity});
+    transition: all 0.1s ease;
+    pointer-events: none;
+  `
+}
+
+// 🔧 Custom Chip 事件处理
+const handleCustomChipEvent = (data: any) => {
+  switch (data.eventType) {
+    case 'spi-detected':
+      addSerialLine('🔍 SPI communication detected!', 'info')
+      // 🎯 触发 SPI 相关任务验证
+      checkTaskVerification('SPI_DETECTED')
+      break
+      
+    case 'i2c-detected':
+      addSerialLine('🔍 I2C communication detected!', 'info')
+      checkTaskVerification('I2C_DETECTED')
+      break
+      
+    case 'pattern-match':
+      addSerialLine(`🎯 Pattern matched: ${data.pattern}`, 'info')
+      checkTaskVerification(`PATTERN_${data.pattern}`)
+      break
+  }
+}
+
+// 🚀 启动 X-Ray 监控
+const startXRayMonitoring = () => {
+  xrayState.value.isActive = true
+  
+  // 📤 启用 GPIO 状态监控
+  if (wokwiFrame.value?.contentWindow) {
+    wokwiFrame.value.contentWindow.postMessage({
+      type: 'enable-xray-mode',
+      data: {
+        monitorPins: ['D0', 'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7'],
+        sampleRate: 60 // 60fps 最大更新率
+      }
+    }, '*')
+  }
+}
+
+// 🛑 停止 X-Ray 监控
+const stopXRayMonitoring = () => {
+  xrayState.value.isActive = false
+  
+  // 🧹 清理动画帧
+  if (xrayState.value.animationFrame) {
+    cancelAnimationFrame(xrayState.value.animationFrame)
+    xrayState.value.animationFrame = null
+  }
+  
+  // 🧹 清理状态
+  xrayState.value.gpioStates.clear()
+  xrayState.value.updateLock = false
+  
+  // 📤 禁用监控
+  if (wokwiFrame.value?.contentWindow) {
+    wokwiFrame.value.contentWindow.postMessage({
+      type: 'disable-xray-mode'
+    }, '*')
   }
 }
 

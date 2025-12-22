@@ -189,6 +189,9 @@ knzn-project/
 │
 ├── 📁 plugins/                  # Nuxt 插件
 ├── 📁 middleware/               # 路由中间件
+│   ├── auth.ts                 # 认证中间件
+│   ├── mobile-redirect.ts      # 移动端拦截中间件
+│   └── progress-handoff.ts     # 进度接力中间件
 ├── 📁 layouts/                  # 布局模板
 └── 📁 public/                   # 公共静态文件
 ```
@@ -338,7 +341,7 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import * as schema from './schema'
 
-// 🔧 连接池配置 (Docker 容器优化)
+// 🔧 连接池配置 (针对 Contabo VPS L: 12GB RAM, 6 CPU cores 优化)
 const connectionConfig = {
   host: process.env.DATABASE_HOST || 'postgres', // Docker 服务名
   port: parseInt(process.env.DATABASE_PORT || '5432'),
@@ -346,19 +349,55 @@ const connectionConfig = {
   user: process.env.DATABASE_USER || 'knzn_user',
   password: process.env.DATABASE_PASSWORD,
   
-  // 🐳 Docker 环境优化
-  max: 10, // 容器环境适中连接数
-  idle_timeout: 30,
-  connect_timeout: 10,
+  // 🐳 Contabo VPS L 优化配置 (12GB RAM, 6 CPU cores)
+  max: 30, // 最大连接数 (适配高并发)
+  idle_timeout: 30, // 空闲超时 30 秒
+  connect_timeout: 10, // 连接超时 10 秒
+  
+  // 🚀 性能优化配置
+  max_lifetime: 60 * 60, // 连接最大生命周期 1 小时
+  transform: {
+    undefined: null // 将 undefined 转换为 null
+  },
   
   // 🔒 SSL 配置 (VPS 内部通信可关闭)
   ssl: process.env.NODE_ENV === 'production' && process.env.DATABASE_SSL === 'true' 
     ? { rejectUnauthorized: false } 
     : false,
     
-  // 🚀 性能优化
+  // 🚀 高性能配置
   prepare: false, // 避免 prepared statement 缓存问题
   onnotice: () => {}, // 忽略 PostgreSQL 通知
+  
+  // 📊 连接池监控配置
+  debug: process.env.NODE_ENV === 'development',
+  
+  // 🔄 连接池回收配置
+  max_uses: 7500, // 每个连接最大使用次数
+  
+  // 🎯 针对 Contabo VPS 的网络优化
+  keep_alive: true,
+  keepalive_initial_delay_millis: 10000,
+  
+  // 📈 批量操作优化
+  fetch_array_size: 1000, // 批量查询优化
+  
+  // 🔧 类型转换配置
+  types: {
+    // 优化 JSON 类型处理
+    json: {
+      to: 20,
+      from: [114, 3802],
+      serialize: (x: any) => JSON.stringify(x),
+      parse: (x: string) => {
+        try {
+          return JSON.parse(x)
+        } catch {
+          return x
+        }
+      }
+    }
+  }
 }
 
 const queryClient = postgres(process.env.DATABASE_URL!, connectionConfig)
@@ -376,12 +415,52 @@ export const testConnection = async () => {
   }
 }
 
+// 📊 连接池状态监控
+export const getConnectionPoolStats = () => {
+  return {
+    totalConnections: queryClient.options.max,
+    activeConnections: queryClient.reserved.length,
+    idleConnections: queryClient.idle.length,
+    waitingQueries: queryClient.ended.length
+  }
+}
+
 // 🔄 优雅关闭
 process.on('SIGTERM', async () => {
-  console.log('🔄 Closing database connection...')
+  console.log('🔄 Closing database connection pool...')
   await queryClient.end()
   process.exit(0)
 })
+
+process.on('SIGINT', async () => {
+  console.log('🔄 Closing database connection pool...')
+  await queryClient.end()
+  process.exit(0)
+})
+
+// 📊 连接池健康检查
+export const healthCheck = async () => {
+  try {
+    const start = Date.now()
+    await queryClient`SELECT 1 as health_check`
+    const responseTime = Date.now() - start
+    
+    const stats = getConnectionPoolStats()
+    
+    return {
+      healthy: true,
+      responseTime,
+      connectionPool: stats,
+      timestamp: new Date().toISOString()
+    }
+  } catch (error) {
+    return {
+      healthy: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    }
+  }
+}
 ```
 
 ## 🔐 认证系统 (Better-Auth)
@@ -1384,3 +1463,991 @@ docker-compose logs -f
 **技术栈**: Nuxt 4 + Drizzle + Better-Auth + Contabo VPS
 
 这份文档是 KNZN 项目的技术圣经，涵盖了从架构设计到部署上线的完整流程。遵循"个人开发者高效率"原则，摒弃了企业级的复杂性，专注于快速开发和低运维成本。
+
+## 📱 移动端适配策略 (Magic Link 跨端接力)
+
+### 移动端拦截中间件
+
+```typescript
+// middleware/mobile-redirect.ts
+export default defineNuxtRouteMiddleware((to) => {
+  // 🔍 检测移动设备
+  const userAgent = useRequestHeaders()['user-agent'] || ''
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent)
+  
+  // 📱 移动端访问关卡页面时拦截
+  if (isMobile && to.path.startsWith('/lesson/')) {
+    // 🚫 强制拦截，重定向到移动端提示页
+    return navigateTo({
+      path: '/mobile-redirect',
+      query: {
+        returnTo: to.fullPath,
+        lessonId: to.params.id
+      }
+    })
+  }
+})
+```
+
+### Magic Link 跨端接力页面
+
+```vue
+<!-- pages/mobile-redirect.vue -->
+<template>
+  <div class="mobile-redirect-page">
+    <div class="container">
+      <!-- 📱 移动端提示 -->
+      <div class="mobile-notice">
+        <Icon name="desktop-computer" class="desktop-icon" />
+        <h1>🖥️ Desktop Experience Required</h1>
+        <p>KNZN's interactive circuit simulations work best on desktop computers with larger screens and full keyboard support.</p>
+      </div>
+      
+      <!-- 🔗 Magic Link 发送区域 -->
+      <div class="magic-link-section">
+        <h2>📧 Continue on Desktop</h2>
+        <p>We'll send you a magic link to continue this lesson on your computer:</p>
+        
+        <form @submit.prevent="sendMagicLink" class="magic-link-form">
+          <div class="input-group">
+            <input
+              v-model="email"
+              type="email"
+              placeholder="Enter your email address"
+              required
+              class="email-input"
+              :disabled="sending"
+            />
+            <button 
+              type="submit" 
+              :disabled="sending || !email"
+              class="send-btn"
+            >
+              <Icon v-if="sending" name="loading" class="animate-spin" />
+              {{ sending ? 'Sending...' : 'Send Magic Link' }}
+            </button>
+          </div>
+        </form>
+        
+        <!-- ✅ 发送成功提示 -->
+        <div v-if="sent" class="success-message">
+          <Icon name="check-circle" class="text-green-500" />
+          <p>Magic link sent to <strong>{{ email }}</strong>!</p>
+          <p class="text-sm text-gray-600">Check your email and click the link to continue on desktop.</p>
+        </div>
+      </div>
+      
+      <!-- 📋 课程预览 -->
+      <div v-if="lessonPreview" class="lesson-preview">
+        <h3>📚 Lesson Preview: {{ lessonPreview.title }}</h3>
+        <p>{{ lessonPreview.description }}</p>
+        
+        <div class="preview-features">
+          <div class="feature">
+            <Icon name="cpu" />
+            <span>Interactive Circuit Simulation</span>
+          </div>
+          <div class="feature">
+            <Icon name="code" />
+            <span>Real-time Code Editing</span>
+          </div>
+          <div class="feature">
+            <Icon name="chart-bar" />
+            <span>Logic Analyzer Tools</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 🏠 返回首页 -->
+      <div class="navigation">
+        <NuxtLink to="/" class="home-btn">
+          <Icon name="home" />
+          Back to Home
+        </NuxtLink>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+const route = useRoute()
+const { user } = useAuth()
+
+const email = ref(user.value?.email || '')
+const sending = ref(false)
+const sent = ref(false)
+const lessonPreview = ref(null)
+
+const returnTo = route.query.returnTo as string
+const lessonId = route.query.lessonId as string
+
+// 📚 获取课程预览信息
+if (lessonId) {
+  const { data } = await $fetch(`/api/lessons/${lessonId}/preview`)
+  lessonPreview.value = data
+}
+
+// 📧 发送 Magic Link
+const sendMagicLink = async () => {
+  if (!email.value || sending.value) return
+  
+  sending.value = true
+  
+  try {
+    await $fetch('/api/auth/magic-link/progress-handoff', {
+      method: 'POST',
+      body: {
+        email: email.value,
+        returnTo,
+        lessonId,
+        deviceInfo: {
+          userAgent: navigator.userAgent,
+          timestamp: new Date().toISOString(),
+          source: 'mobile-redirect'
+        }
+      }
+    })
+    
+    sent.value = true
+  } catch (error) {
+    console.error('Magic link error:', error)
+    alert('Failed to send magic link. Please try again.')
+  } finally {
+    sending.value = false
+  }
+}
+
+// 🔍 SEO 配置
+useSeoMeta({
+  title: 'Continue on Desktop - KNZN',
+  description: 'KNZN circuit simulations work best on desktop. Get a magic link to continue your lesson.',
+  robots: 'noindex, nofollow'
+})
+</script>
+
+<style scoped>
+.mobile-redirect-page {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  color: white;
+  padding: 20px;
+}
+
+.container {
+  max-width: 500px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.mobile-notice {
+  margin-bottom: 40px;
+}
+
+.desktop-icon {
+  font-size: 4rem;
+  color: #00ff88;
+  margin-bottom: 20px;
+}
+
+.magic-link-section {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 30px;
+  border-radius: 15px;
+  margin-bottom: 30px;
+  backdrop-filter: blur(10px);
+}
+
+.magic-link-form {
+  margin: 20px 0;
+}
+
+.input-group {
+  display: flex;
+  gap: 10px;
+  flex-direction: column;
+}
+
+.email-input {
+  padding: 15px;
+  border: 2px solid #00ff88;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  color: white;
+  font-size: 16px;
+}
+
+.email-input::placeholder {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.send-btn {
+  padding: 15px 30px;
+  background: #00ff88;
+  color: #000;
+  border: none;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.send-btn:hover:not(:disabled) {
+  background: #00cc6a;
+  transform: translateY(-2px);
+}
+
+.send-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.success-message {
+  background: rgba(0, 255, 136, 0.2);
+  padding: 20px;
+  border-radius: 8px;
+  border: 1px solid #00ff88;
+  margin-top: 20px;
+}
+
+.lesson-preview {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 20px;
+  border-radius: 10px;
+  margin-bottom: 30px;
+}
+
+.preview-features {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.feature {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #00ff88;
+}
+
+.home-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  color: white;
+  text-decoration: none;
+  transition: all 0.3s ease;
+}
+
+.home-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+@media (min-width: 640px) {
+  .input-group {
+    flex-direction: row;
+  }
+  
+  .email-input {
+    flex: 1;
+  }
+}
+</style>
+```
+
+### 进度接力 Magic Link API
+
+```typescript
+// server/api/auth/magic-link/progress-handoff.post.ts
+export default defineEventHandler(async (event) => {
+  const body = await readBody(event)
+  const { email, returnTo, lessonId, deviceInfo } = body
+  
+  try {
+    // 🔍 查找或创建用户
+    let user = await db.select().from(users).where(eq(users.email, email)).limit(1)
+    
+    if (!user.length) {
+      // 🆕 创建新用户 (临时账户)
+      const newUser = await db.insert(users).values({
+        id: nanoid(),
+        email,
+        name: email.split('@')[0], // 临时用户名
+        createdAt: new Date(),
+        isTempAccount: true // 标记为临时账户
+      }).returning()
+      
+      user = newUser
+    }
+    
+    // 🔑 生成进度接力令牌
+    const handoffToken = nanoid(32)
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000) // 30分钟有效
+    
+    // 💾 保存接力会话
+    await db.insert(progressHandoffSessions).values({
+      id: nanoid(),
+      userId: user[0].id,
+      token: handoffToken,
+      returnTo,
+      lessonId,
+      deviceInfo: JSON.stringify(deviceInfo),
+      expiresAt,
+      createdAt: new Date()
+    })
+    
+    // 📧 发送 Magic Link 邮件
+    const magicLinkUrl = `${process.env.SITE_URL}/auth/progress-handoff?token=${handoffToken}`
+    
+    await sendEmail({
+      to: email,
+      template: 'progress-handoff-magic-link',
+      data: {
+        magicLinkUrl,
+        lessonTitle: await getLessonTitle(lessonId),
+        expiresIn: '30 minutes'
+      }
+    })
+    
+    return {
+      success: true,
+      message: 'Magic link sent successfully'
+    }
+  } catch (error) {
+    console.error('Progress handoff error:', error)
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Failed to send magic link'
+    })
+  }
+})
+
+// 📚 获取课程标题
+const getLessonTitle = async (lessonId: string): Promise<string> => {
+  if (!lessonId) return 'KNZN Lesson'
+  
+  try {
+    const lesson = await db.select({ title: lessons.title })
+      .from(lessons)
+      .where(eq(lessons.id, lessonId))
+      .limit(1)
+    
+    return lesson[0]?.title || 'KNZN Lesson'
+  } catch {
+    return 'KNZN Lesson'
+  }
+}
+```
+
+### 进度接力验证页面
+
+```vue
+<!-- pages/auth/progress-handoff.vue -->
+<template>
+  <div class="progress-handoff-page">
+    <div class="container">
+      <!-- ⏳ 验证中 -->
+      <div v-if="verifying" class="verifying">
+        <Icon name="loading" class="animate-spin text-4xl text-blue-500" />
+        <h2>Verifying your magic link...</h2>
+        <p>Please wait while we set up your session.</p>
+      </div>
+      
+      <!-- ✅ 验证成功 -->
+      <div v-else-if="verified" class="success">
+        <Icon name="check-circle" class="text-6xl text-green-500" />
+        <h2>Welcome back! 🎉</h2>
+        <p>Your progress has been restored. Redirecting to your lesson...</p>
+        
+        <div class="lesson-info" v-if="lessonInfo">
+          <h3>📚 {{ lessonInfo.title }}</h3>
+          <p>{{ lessonInfo.description }}</p>
+        </div>
+        
+        <div class="countdown">
+          <p>Redirecting in {{ countdown }} seconds...</p>
+          <button @click="redirectNow" class="redirect-btn">
+            Continue Now
+          </button>
+        </div>
+      </div>
+      
+      <!-- ❌ 验证失败 -->
+      <div v-else class="error">
+        <Icon name="x-circle" class="text-6xl text-red-500" />
+        <h2>Invalid or Expired Link</h2>
+        <p>This magic link is invalid or has expired. Please request a new one.</p>
+        
+        <div class="actions">
+          <NuxtLink to="/" class="home-btn">
+            <Icon name="home" />
+            Go to Home
+          </NuxtLink>
+          <NuxtLink to="/auth/signin" class="signin-btn">
+            <Icon name="login" />
+            Sign In
+          </NuxtLink>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+const route = useRoute()
+const { signIn } = useAuth()
+
+const verifying = ref(true)
+const verified = ref(false)
+const lessonInfo = ref(null)
+const countdown = ref(5)
+const redirectUrl = ref('/')
+
+const token = route.query.token as string
+
+// 🔍 验证 Magic Link
+const verifyMagicLink = async () => {
+  if (!token) {
+    verifying.value = false
+    return
+  }
+  
+  try {
+    const response = await $fetch('/api/auth/verify-progress-handoff', {
+      method: 'POST',
+      body: { token }
+    })
+    
+    if (response.success) {
+      // ✅ 验证成功，自动登录
+      await signIn(response.user.email, response.tempPassword)
+      
+      verified.value = true
+      redirectUrl.value = response.returnTo || '/skill-map'
+      lessonInfo.value = response.lessonInfo
+      
+      // 🔄 开始倒计时重定向
+      startCountdown()
+    } else {
+      verifying.value = false
+    }
+  } catch (error) {
+    console.error('Magic link verification error:', error)
+    verifying.value = false
+  }
+}
+
+// ⏰ 倒计时重定向
+const startCountdown = () => {
+  const timer = setInterval(() => {
+    countdown.value--
+    if (countdown.value <= 0) {
+      clearInterval(timer)
+      redirectNow()
+    }
+  }, 1000)
+}
+
+// 🚀 立即重定向
+const redirectNow = () => {
+  navigateTo(redirectUrl.value)
+}
+
+// 🔄 页面加载时验证
+onMounted(() => {
+  verifyMagicLink()
+})
+
+// 🔍 SEO 配置
+useSeoMeta({
+  title: 'Progress Handoff - KNZN',
+  robots: 'noindex, nofollow'
+})
+</script>
+```
+## 🏗️ 关卡内容管理系统 (Lesson Generator Service)
+
+### JSON Schema 校验系统
+
+```typescript
+// server/utils/lesson-schema.ts
+import Ajv from 'ajv'
+import addFormats from 'ajv-formats'
+
+// 🔧 初始化 AJV 校验器
+const ajv = new Ajv({ allErrors: true, strict: false })
+addFormats(ajv)
+
+// 📋 关卡配置 JSON Schema
+export const LESSON_CONFIG_SCHEMA = {
+  type: 'object',
+  required: ['id', 'title', 'description', 'phases', 'wokwi'],
+  properties: {
+    id: {
+      type: 'string',
+      pattern: '^[a-z0-9-]+$',
+      minLength: 3,
+      maxLength: 50
+    },
+    title: {
+      type: 'string',
+      minLength: 5,
+      maxLength: 100
+    },
+    description: {
+      type: 'string',
+      minLength: 20,
+      maxLength: 500
+    },
+    difficulty: {
+      type: 'string',
+      enum: ['beginner', 'intermediate', 'advanced']
+    },
+    estimatedTime: {
+      type: 'integer',
+      minimum: 5,
+      maximum: 180
+    },
+    prerequisites: {
+      type: 'array',
+      items: {
+        type: 'string',
+        pattern: '^[a-z0-9-]+$'
+      }
+    },
+    
+    // 🎯 学习阶段配置
+    phases: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 6,
+      items: {
+        type: 'object',
+        required: ['id', 'title', 'type', 'content'],
+        properties: {
+          id: {
+            type: 'string',
+            enum: ['theory', 'practice', 'debug', 'reflection', 'challenge', 'assessment']
+          },
+          title: {
+            type: 'string',
+            minLength: 3,
+            maxLength: 50
+          },
+          type: {
+            type: 'string',
+            enum: ['reading', 'simulation', 'coding', 'quiz', 'debugging']
+          },
+          content: {
+            type: 'object',
+            properties: {
+              markdown: { type: 'string' },
+              tasks: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  required: ['id', 'title', 'description', 'verification'],
+                  properties: {
+                    id: { type: 'string' },
+                    title: { type: 'string' },
+                    description: { type: 'string' },
+                    verification: {
+                      type: 'object',
+                      required: ['type'],
+                      properties: {
+                        type: {
+                          type: 'string',
+                          enum: ['serial', 'component', 'timing', 'pattern', 'custom']
+                        },
+                        pattern: { type: 'string' },
+                        timeout: { type: 'integer', minimum: 1000 },
+                        customValidator: { type: 'string' }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    
+    // 🔬 Wokwi 仿真配置
+    wokwi: {
+      type: 'object',
+      required: ['projectId'],
+      properties: {
+        projectId: {
+          type: 'string',
+          pattern: '^[0-9]+$'
+        },
+        customChips: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['id', 'name', 'behavior'],
+            properties: {
+              id: { type: 'string' },
+              name: { type: 'string' },
+              behavior: { type: 'string' }
+            }
+          }
+        },
+        xrayConfig: {
+          type: 'object',
+          properties: {
+            enabled: { type: 'boolean' },
+            monitorPins: {
+              type: 'array',
+              items: { type: 'string' }
+            },
+            sampleRate: {
+              type: 'integer',
+              minimum: 1,
+              maximum: 1000
+            }
+          }
+        }
+      }
+    },
+    
+    // 🏆 成就和奖励
+    rewards: {
+      type: 'object',
+      properties: {
+        xp: {
+          type: 'integer',
+          minimum: 10,
+          maximum: 1000
+        },
+        badges: {
+          type: 'array',
+          items: { type: 'string' }
+        },
+        unlocks: {
+          type: 'array',
+          items: { type: 'string' }
+        }
+      }
+    }
+  }
+}
+
+// ✅ 编译 Schema 校验器
+export const validateLessonConfig = ajv.compile(LESSON_CONFIG_SCHEMA)
+
+// 🔍 校验关卡配置
+export const validateLesson = (config: any): { valid: boolean; errors?: string[] } => {
+  const valid = validateLessonConfig(config)
+  
+  if (!valid) {
+    const errors = validateLessonConfig.errors?.map(error => {
+      const path = error.instancePath || 'root'
+      return `${path}: ${error.message}`
+    }) || []
+    
+    return { valid: false, errors }
+  }
+  
+  return { valid: true }
+}
+```
+
+### 关卡生成器服务
+
+```typescript
+// server/api/admin/lessons/generate.post.ts
+export default defineEventHandler(async (event) => {
+  const body = await readBody(event)
+  const { template, parameters } = body
+  
+  // 🔐 验证管理员权限
+  const admin = await getAdminUser(event)
+  if (!admin) {
+    throw createError({ statusCode: 403, statusMessage: 'Admin access required' })
+  }
+  
+  try {
+    // 🏗️ 根据模板生成关卡配置
+    const generatedConfig = await generateLessonFromTemplate(template, parameters)
+    
+    // ✅ 校验生成的配置
+    const validation = validateLesson(generatedConfig)
+    if (!validation.valid) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Generated lesson config is invalid',
+        data: { errors: validation.errors }
+      })
+    }
+    
+    // 💾 保存到数据库
+    const lesson = await db.insert(lessons).values({
+      id: nanoid(),
+      configId: generatedConfig.id,
+      title: generatedConfig.title,
+      description: generatedConfig.description,
+      difficulty: generatedConfig.difficulty,
+      config: JSON.stringify(generatedConfig),
+      status: 'draft',
+      createdBy: admin.id,
+      createdAt: new Date()
+    }).returning()
+    
+    return {
+      success: true,
+      lesson: lesson[0],
+      config: generatedConfig
+    }
+  } catch (error) {
+    console.error('Lesson generation error:', error)
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Lesson generation failed'
+    })
+  }
+})
+
+// 🏗️ 关卡模板生成器
+const generateLessonFromTemplate = async (template: string, parameters: any) => {
+  switch (template) {
+    case 'basic-led':
+      return generateBasicLEDLesson(parameters)
+    case 'sensor-reading':
+      return generateSensorLesson(parameters)
+    case 'communication-protocol':
+      return generateCommunicationLesson(parameters)
+    default:
+      throw new Error(`Unknown template: ${template}`)
+  }
+}
+
+// 💡 基础 LED 关卡生成器
+const generateBasicLEDLesson = (params: any) => {
+  const { ledCount = 1, difficulty = 'beginner', includeButton = false } = params
+  
+  return {
+    id: `basic-led-${ledCount}-${Date.now()}`,
+    title: `Control ${ledCount} LED${ledCount > 1 ? 's' : ''}`,
+    description: `Learn to control ${ledCount} LED${ledCount > 1 ? 's' : ''} using Arduino digital outputs${includeButton ? ' and button input' : ''}.`,
+    difficulty,
+    estimatedTime: 15 + (ledCount * 5),
+    prerequisites: difficulty === 'beginner' ? [] : ['basic-electronics'],
+    
+    phases: [
+      {
+        id: 'theory',
+        title: 'Understanding LEDs',
+        type: 'reading',
+        content: {
+          markdown: `
+# LED Basics
+
+LEDs (Light Emitting Diodes) are semiconductor devices that emit light when current flows through them.
+
+## Key Concepts:
+- **Forward Voltage**: Typically 2-3V for standard LEDs
+- **Current Limiting**: Always use resistors to limit current
+- **Polarity**: LEDs have positive (anode) and negative (cathode) terminals
+
+${ledCount > 1 ? `
+## Multiple LEDs
+When controlling multiple LEDs, you can:
+- Use separate pins for individual control
+- Use multiplexing for efficient pin usage
+- Create patterns and animations
+` : ''}
+          `
+        }
+      },
+      {
+        id: 'practice',
+        title: 'Build the Circuit',
+        type: 'simulation',
+        content: {
+          tasks: [
+            {
+              id: 'connect-led',
+              title: 'Connect LED to Pin 13',
+              description: 'Wire the LED with a 220Ω resistor to digital pin 13',
+              verification: {
+                type: 'component',
+                pattern: 'LED_CONNECTED_PIN_13'
+              }
+            },
+            ...(ledCount > 1 ? Array.from({ length: ledCount - 1 }, (_, i) => ({
+              id: `connect-led-${i + 2}`,
+              title: `Connect LED ${i + 2}`,
+              description: `Wire LED ${i + 2} to pin ${12 - i}`,
+              verification: {
+                type: 'component',
+                pattern: `LED_CONNECTED_PIN_${12 - i}`
+              }
+            })) : []),
+            {
+              id: 'upload-code',
+              title: 'Upload Blink Code',
+              description: 'Upload the blink sketch to make the LED flash',
+              verification: {
+                type: 'serial',
+                pattern: 'LED.*ON|LED.*OFF',
+                timeout: 5000
+              }
+            }
+          ]
+        }
+      }
+    ],
+    
+    wokwi: {
+      projectId: generateWokwiProject(ledCount, includeButton),
+      xrayConfig: {
+        enabled: true,
+        monitorPins: Array.from({ length: ledCount }, (_, i) => `D${13 - i}`),
+        sampleRate: 60
+      }
+    },
+    
+    rewards: {
+      xp: 50 + (ledCount * 10),
+      badges: ledCount === 1 ? ['first-led'] : ['multi-led-master'],
+      unlocks: difficulty === 'beginner' ? ['basic-button'] : []
+    }
+  }
+}
+
+// 🔬 生成 Wokwi 项目配置
+const generateWokwiProject = (ledCount: number, includeButton: boolean): string => {
+  // 这里可以调用 Wokwi API 创建项目，或返回预设项目 ID
+  const projectTemplates = {
+    '1-led': '394142936442478593',
+    '2-led': '394142936442478594',
+    '3-led': '394142936442478595',
+    '1-led-button': '394142936442478596'
+  }
+  
+  const key = `${ledCount}-led${includeButton ? '-button' : ''}`
+  return projectTemplates[key] || projectTemplates['1-led']
+}
+```
+
+### 关卡配置验证 API
+
+```typescript
+// server/api/admin/lessons/validate.post.ts
+export default defineEventHandler(async (event) => {
+  const body = await readBody(event)
+  const { config } = body
+  
+  // 🔐 验证权限
+  const admin = await getAdminUser(event)
+  if (!admin) {
+    throw createError({ statusCode: 403, statusMessage: 'Admin access required' })
+  }
+  
+  try {
+    // ✅ 基础 Schema 校验
+    const validation = validateLesson(config)
+    
+    if (!validation.valid) {
+      return {
+        valid: false,
+        errors: validation.errors,
+        warnings: []
+      }
+    }
+    
+    // 🔍 深度校验
+    const deepValidation = await performDeepValidation(config)
+    
+    return {
+      valid: deepValidation.valid,
+      errors: deepValidation.errors,
+      warnings: deepValidation.warnings,
+      suggestions: deepValidation.suggestions
+    }
+  } catch (error) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Validation failed'
+    })
+  }
+})
+
+// 🔍 深度校验逻辑
+const performDeepValidation = async (config: any) => {
+  const errors: string[] = []
+  const warnings: string[] = []
+  const suggestions: string[] = []
+  
+  // 🔗 检查前置条件
+  if (config.prerequisites?.length > 0) {
+    for (const prereq of config.prerequisites) {
+      const exists = await db.select({ id: lessons.id })
+        .from(lessons)
+        .where(eq(lessons.configId, prereq))
+        .limit(1)
+      
+      if (!exists.length) {
+        errors.push(`Prerequisite lesson '${prereq}' does not exist`)
+      }
+    }
+  }
+  
+  // 🔬 验证 Wokwi 项目
+  if (config.wokwi?.projectId) {
+    const wokwiValid = await validateWokwiProject(config.wokwi.projectId)
+    if (!wokwiValid) {
+      errors.push(`Wokwi project '${config.wokwi.projectId}' is not accessible`)
+    }
+  }
+  
+  // 📊 检查任务验证逻辑
+  for (const phase of config.phases) {
+    if (phase.content?.tasks) {
+      for (const task of phase.content.tasks) {
+        if (task.verification?.type === 'custom' && !task.verification.customValidator) {
+          errors.push(`Task '${task.id}' has custom verification but no validator function`)
+        }
+        
+        if (task.verification?.type === 'serial' && !task.verification.pattern) {
+          warnings.push(`Task '${task.id}' uses serial verification but no pattern specified`)
+        }
+      }
+    }
+  }
+  
+  // 💡 生成改进建议
+  if (config.estimatedTime < 10) {
+    suggestions.push('Consider increasing estimated time - very short lessons may not provide enough learning value')
+  }
+  
+  if (config.phases.length === 1) {
+    suggestions.push('Consider adding more phases (theory, practice, reflection) for better learning experience')
+  }
+  
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings,
+    suggestions
+  }
+}
+
+// 🔬 验证 Wokwi 项目可访问性
+const validateWokwiProject = async (projectId: string): Promise<boolean> => {
+  try {
+    const response = await fetch(`https://wokwi.com/api/projects/${projectId}`, {
+      method: 'HEAD'
+    })
+    return response.ok
+  } catch {
+    return false
+  }
+}
+```

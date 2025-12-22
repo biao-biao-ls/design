@@ -2818,3 +2818,462 @@ const CONTABO_MONTHLY_COSTS = {
 **部署策略**: Docker 容器化集群 + Nginx 反代
 
 这份运维指南专为 Contabo VPS 的单机容器化部署设计，通过 Docker Compose 编排实现完整的应用栈，相比 Vercel 混合方案进一步降低了成本，同时保持了高可用性和易维护性。
+## 🗄️ PostgreSQL 连接池优化配置 (Contabo VPS L 专用)
+
+### Drizzle 连接池配置文件
+
+```typescript
+// drizzle.config.ts - 针对 Contabo VPS L (12GB RAM, 6 CPU cores) 优化
+import type { Config } from 'drizzle-kit'
+
+export default {
+  schema: './server/database/schema.ts',
+  out: './server/database/migrations',
+  driver: 'pg',
+  dbCredentials: {
+    connectionString: process.env.DATABASE_URL!,
+    // 🔧 连接池优化配置
+    max: 30, // 最大连接数 (12GB RAM 可支持)
+    idleTimeoutMillis: 30000, // 空闲超时 30 秒
+    connectionTimeoutMillis: 10000, // 连接超时 10 秒
+    
+    // 🚀 Contabo VPS L 性能优化
+    statement_timeout: 60000, // SQL 语句超时 60 秒
+    query_timeout: 30000, // 查询超时 30 秒
+    
+    // 📊 批量操作优化
+    application_name: 'knzn-production',
+    
+    // 🔒 SSL 配置 (内网可关闭)
+    ssl: process.env.DATABASE_SSL === 'true' ? {
+      rejectUnauthorized: false,
+      ca: process.env.DATABASE_CA_CERT,
+      key: process.env.DATABASE_CLIENT_KEY,
+      cert: process.env.DATABASE_CLIENT_CERT
+    } : false
+  },
+  
+  // 🔧 迁移配置
+  migrations: {
+    table: 'drizzle_migrations',
+    schema: 'public'
+  },
+  
+  // 📊 性能监控
+  verbose: process.env.NODE_ENV === 'development',
+  strict: true
+} satisfies Config
+```
+
+### Docker Compose 数据库优化
+
+```yaml
+# docker-compose.yml - PostgreSQL 服务优化配置
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: knzn-postgres
+    environment:
+      POSTGRES_DB: knzn_production
+      POSTGRES_USER: knzn_user
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+      
+      # 🚀 Contabo VPS L 性能优化环境变量
+      POSTGRES_SHARED_BUFFERS: "3GB"          # 25% of 12GB RAM
+      POSTGRES_EFFECTIVE_CACHE_SIZE: "8GB"    # 67% of 12GB RAM
+      POSTGRES_WORK_MEM: "16MB"               # 适合高并发
+      POSTGRES_MAINTENANCE_WORK_MEM: "512MB"  # 维护操作内存
+      POSTGRES_MAX_CONNECTIONS: "200"         # 最大连接数
+      POSTGRES_CHECKPOINT_COMPLETION_TARGET: "0.9"
+      POSTGRES_WAL_BUFFERS: "16MB"
+      POSTGRES_RANDOM_PAGE_COST: "1.1"       # NVMe SSD 优化
+      POSTGRES_EFFECTIVE_IO_CONCURRENCY: "200" # 6 CPU cores 优化
+      
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      
+    ports:
+      - "5432:5432"  # 生产环境建议关闭外部访问
+      
+    command: >
+      postgres
+      -c config_file=/etc/postgresql/postgresql.conf
+      -c shared_buffers=3GB
+      -c effective_cache_size=8GB
+      -c work_mem=16MB
+      -c maintenance_work_mem=512MB
+      -c max_connections=200
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=16MB
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c max_worker_processes=6
+      -c max_parallel_workers=4
+      -c max_parallel_workers_per_gather=2
+      
+    restart: unless-stopped
+    networks:
+      - knzn-network
+      
+    # 🏥 健康检查
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U knzn_user -d knzn_production"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+      
+    # 📊 资源限制 (Contabo VPS L 优化)
+    deploy:
+      resources:
+        limits:
+          memory: 6G      # 50% of 12GB RAM
+          cpus: '4.0'     # 67% of 6 CPU cores
+        reservations:
+          memory: 3G      # 25% of 12GB RAM
+          cpus: '2.0'     # 33% of 6 CPU cores
+```
+
+### PostgreSQL 配置文件优化
+
+```conf
+# docker/postgres/postgresql.conf
+# KNZN PostgreSQL 配置 - Contabo VPS L 优化版
+
+# 🔧 连接设置
+listen_addresses = '*'
+port = 5432
+max_connections = 200                    # 支持高并发连接
+
+# 🧠 内存配置 (针对 12GB RAM 优化)
+shared_buffers = 3GB                     # 25% of RAM
+effective_cache_size = 8GB               # 67% of RAM  
+work_mem = 16MB                          # 每个查询操作的内存
+maintenance_work_mem = 512MB             # 维护操作内存
+temp_buffers = 32MB                      # 临时表缓冲区
+
+# 💾 WAL (Write-Ahead Logging) 配置
+wal_buffers = 16MB                       # WAL 缓冲区
+checkpoint_completion_target = 0.9       # 检查点完成目标
+checkpoint_timeout = 15min               # 检查点超时
+max_wal_size = 2GB                       # 最大 WAL 大小
+min_wal_size = 1GB                       # 最小 WAL 大小
+
+# 🚀 查询规划器配置 (NVMe SSD 优化)
+random_page_cost = 1.1                   # NVMe SSD 随机访问成本
+seq_page_cost = 1.0                      # 顺序访问成本
+cpu_tuple_cost = 0.01                    # CPU 元组处理成本
+cpu_index_tuple_cost = 0.005             # CPU 索引元组成本
+cpu_operator_cost = 0.0025               # CPU 操作符成本
+
+# 🔄 并行查询配置 (6 CPU cores 优化)
+max_worker_processes = 6                 # 最大工作进程数
+max_parallel_workers = 4                 # 最大并行工作进程
+max_parallel_workers_per_gather = 2      # 每个查询的最大并行工作进程
+max_parallel_maintenance_workers = 2     # 维护操作并行工作进程
+parallel_tuple_cost = 0.1                # 并行元组成本
+parallel_setup_cost = 1000.0             # 并行设置成本
+
+# 📊 统计信息配置
+default_statistics_target = 100          # 统计信息目标
+track_activities = on                    # 跟踪活动
+track_counts = on                        # 跟踪计数
+track_io_timing = on                     # 跟踪 I/O 时间
+track_functions = pl                     # 跟踪函数调用
+
+# 🔍 查询优化
+enable_hashjoin = on                     # 启用哈希连接
+enable_mergejoin = on                    # 启用合并连接
+enable_nestloop = on                     # 启用嵌套循环连接
+enable_seqscan = on                      # 启用顺序扫描
+enable_indexscan = on                    # 启用索引扫描
+enable_bitmapscan = on                   # 启用位图扫描
+
+# 🔒 安全配置
+ssl = off                                # 内网通信关闭 SSL
+password_encryption = scram-sha-256      # 密码加密方式
+
+# 📝 日志配置
+logging_collector = on                   # 启用日志收集
+log_destination = 'stderr'               # 日志输出到标准错误
+log_directory = 'log'                    # 日志目录
+log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
+log_rotation_age = 1d                    # 日志轮转周期
+log_rotation_size = 100MB                # 日志文件大小限制
+log_min_duration_statement = 1000        # 记录执行时间超过 1 秒的查询
+log_checkpoints = on                     # 记录检查点
+log_connections = on                     # 记录连接
+log_disconnections = on                  # 记录断开连接
+log_lock_waits = on                      # 记录锁等待
+log_temp_files = 10MB                    # 记录大于 10MB 的临时文件
+
+# 🔄 自动清理配置
+autovacuum = on                          # 启用自动清理
+autovacuum_max_workers = 3               # 自动清理最大工作进程
+autovacuum_naptime = 1min                # 自动清理间隔
+autovacuum_vacuum_threshold = 50         # 清理阈值
+autovacuum_analyze_threshold = 50        # 分析阈值
+autovacuum_vacuum_scale_factor = 0.2     # 清理比例因子
+autovacuum_analyze_scale_factor = 0.1    # 分析比例因子
+
+# 📈 性能监控
+shared_preload_libraries = 'pg_stat_statements'  # 预加载统计扩展
+pg_stat_statements.max = 10000           # 最大跟踪语句数
+pg_stat_statements.track = all           # 跟踪所有语句
+```
+
+### 连接池监控 API
+
+```typescript
+// server/api/admin/database/pool-stats.get.ts
+export default defineEventHandler(async (event) => {
+  const admin = await getAdminUser(event)
+  if (!admin) {
+    throw createError({ statusCode: 403, statusMessage: 'Admin access required' })
+  }
+  
+  try {
+    // 📊 获取连接池统计
+    const poolStats = getConnectionPoolStats()
+    
+    // 🔍 获取数据库活动统计
+    const dbStats = await db.execute(sql`
+      SELECT 
+        datname as database_name,
+        numbackends as active_connections,
+        xact_commit as transactions_committed,
+        xact_rollback as transactions_rolled_back,
+        blks_read as blocks_read,
+        blks_hit as blocks_hit,
+        tup_returned as tuples_returned,
+        tup_fetched as tuples_fetched,
+        tup_inserted as tuples_inserted,
+        tup_updated as tuples_updated,
+        tup_deleted as tuples_deleted,
+        conflicts as conflicts,
+        temp_files as temp_files,
+        temp_bytes as temp_bytes,
+        deadlocks as deadlocks,
+        blk_read_time as block_read_time,
+        blk_write_time as block_write_time,
+        stats_reset as stats_reset_time
+      FROM pg_stat_database 
+      WHERE datname = 'knzn_production'
+    `)
+    
+    // 🔍 获取当前活动查询
+    const activeQueries = await db.execute(sql`
+      SELECT 
+        pid,
+        usename as username,
+        application_name,
+        client_addr as client_address,
+        state,
+        query_start,
+        state_change,
+        query,
+        wait_event_type,
+        wait_event
+      FROM pg_stat_activity 
+      WHERE datname = 'knzn_production' 
+        AND state != 'idle'
+        AND pid != pg_backend_pid()
+      ORDER BY query_start DESC
+      LIMIT 20
+    `)
+    
+    // 🔍 获取锁信息
+    const locks = await db.execute(sql`
+      SELECT 
+        l.locktype,
+        l.database,
+        l.relation,
+        l.page,
+        l.tuple,
+        l.virtualxid,
+        l.transactionid,
+        l.classid,
+        l.objid,
+        l.objsubid,
+        l.virtualtransaction,
+        l.pid,
+        l.mode,
+        l.granted,
+        a.usename,
+        a.query,
+        a.query_start,
+        a.application_name,
+        a.client_addr
+      FROM pg_locks l
+      LEFT JOIN pg_stat_activity a ON l.pid = a.pid
+      WHERE l.database = (SELECT oid FROM pg_database WHERE datname = 'knzn_production')
+      ORDER BY l.granted, l.pid
+    `)
+    
+    // 📊 计算缓存命中率
+    const cacheHitRate = dbStats[0] ? 
+      ((dbStats[0].blocks_hit / (dbStats[0].blocks_hit + dbStats[0].blocks_read)) * 100).toFixed(2) : 0
+    
+    return {
+      connectionPool: poolStats,
+      database: {
+        ...dbStats[0],
+        cache_hit_rate: `${cacheHitRate}%`
+      },
+      activeQueries: activeQueries.map(query => ({
+        ...query,
+        duration: query.query_start ? 
+          Math.round((Date.now() - new Date(query.query_start).getTime()) / 1000) : null
+      })),
+      locks: locks.length,
+      lockDetails: locks.slice(0, 10), // 只返回前 10 个锁
+      timestamp: new Date().toISOString()
+    }
+  } catch (error) {
+    console.error('Database stats error:', error)
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Failed to fetch database statistics'
+    })
+  }
+})
+```
+
+### 数据库性能监控脚本
+
+```bash
+#!/bin/bash
+# scripts/db-monitor.sh - 数据库性能监控脚本
+
+# 📋 配置
+DB_NAME="knzn_production"
+DB_USER="knzn_user"
+LOG_FILE="/var/log/knzn-db-monitor.log"
+ALERT_THRESHOLD_CONNECTIONS=150  # 连接数告警阈值
+ALERT_THRESHOLD_CACHE_HIT=95     # 缓存命中率告警阈值
+
+# 📝 日志函数
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a $LOG_FILE
+}
+
+# 🚨 发送告警
+send_alert() {
+    local severity=$1
+    local message=$2
+    local metric=$3
+    local value=$4
+    
+    curl -X POST "https://knzn.net/api/admin/alerts/database" \
+        -H "Content-Type: application/json" \
+        -H "X-API-Key: $INTERNAL_API_KEY" \
+        -d "{
+            \"severity\": \"$severity\",
+            \"message\": \"$message\",
+            \"metric\": \"$metric\",
+            \"value\": \"$value\",
+            \"timestamp\": \"$(date -Iseconds)\"
+        }" || log "Failed to send alert: $message"
+}
+
+log "Starting database performance monitoring..."
+
+# 📊 检查连接数
+ACTIVE_CONNECTIONS=$(sudo -u postgres psql -d $DB_NAME -t -c "
+    SELECT count(*) FROM pg_stat_activity WHERE datname = '$DB_NAME';
+" | xargs)
+
+log "Active connections: $ACTIVE_CONNECTIONS"
+
+if [ "$ACTIVE_CONNECTIONS" -gt $ALERT_THRESHOLD_CONNECTIONS ]; then
+    send_alert "warning" "High database connection count: $ACTIVE_CONNECTIONS" "active_connections" "$ACTIVE_CONNECTIONS"
+fi
+
+# 📊 检查缓存命中率
+CACHE_HIT_RATE=$(sudo -u postgres psql -d $DB_NAME -t -c "
+    SELECT round(
+        (sum(blks_hit) * 100.0 / (sum(blks_hit) + sum(blks_read)))::numeric, 2
+    ) as cache_hit_rate
+    FROM pg_stat_database 
+    WHERE datname = '$DB_NAME';
+" | xargs)
+
+log "Cache hit rate: ${CACHE_HIT_RATE}%"
+
+if (( $(echo "$CACHE_HIT_RATE < $ALERT_THRESHOLD_CACHE_HIT" | bc -l) )); then
+    send_alert "warning" "Low cache hit rate: ${CACHE_HIT_RATE}%" "cache_hit_rate" "$CACHE_HIT_RATE"
+fi
+
+# 📊 检查长时间运行的查询
+LONG_QUERIES=$(sudo -u postgres psql -d $DB_NAME -t -c "
+    SELECT count(*) 
+    FROM pg_stat_activity 
+    WHERE datname = '$DB_NAME' 
+      AND state != 'idle' 
+      AND query_start < now() - interval '5 minutes';
+" | xargs)
+
+log "Long running queries (>5min): $LONG_QUERIES"
+
+if [ "$LONG_QUERIES" -gt 0 ]; then
+    send_alert "warning" "Long running queries detected: $LONG_QUERIES" "long_queries" "$LONG_QUERIES"
+fi
+
+# 📊 检查数据库大小
+DB_SIZE=$(sudo -u postgres psql -d $DB_NAME -t -c "
+    SELECT pg_size_pretty(pg_database_size('$DB_NAME'));
+" | xargs)
+
+log "Database size: $DB_SIZE"
+
+# 📊 检查表膨胀
+BLOATED_TABLES=$(sudo -u postgres psql -d $DB_NAME -t -c "
+    SELECT count(*) FROM (
+        SELECT schemaname, tablename, 
+               round((CASE WHEN otta=0 THEN 0.0 ELSE sml.relpages::float/otta END)::numeric,1) AS tbloat
+        FROM (
+            SELECT schemaname, tablename, cc.reltuples, cc.relpages, bs,
+                   CEIL((cc.reltuples*((datahdr+ma-
+                     (CASE WHEN datahdr%ma=0 THEN ma ELSE datahdr%ma END))+nullhdr2+4))/(bs-20::float)) AS otta
+            FROM (
+                SELECT ma,bs,schemaname,tablename,
+                       (datawidth+(hdr+ma-(case when hdr%ma=0 THEN ma ELSE hdr%ma END)))::numeric AS datahdr,
+                       (maxfracsum*(nullhdr+ma-(case when nullhdr%ma=0 THEN ma ELSE nullhdr%ma END))) AS nullhdr2
+                FROM (
+                    SELECT schemaname, tablename, hdr, ma, bs,
+                           SUM((1-null_frac)*avg_width) AS datawidth,
+                           MAX(null_frac) AS maxfracsum,
+                           hdr+(
+                               SELECT 1+count(*)/8
+                               FROM pg_stats s2
+                               WHERE null_frac<>0 AND s2.schemaname = s.schemaname AND s2.tablename = s.tablename
+                           ) AS nullhdr
+                    FROM pg_stats s, (
+                        SELECT (SELECT current_setting('block_size')::numeric) AS bs,
+                               CASE WHEN substring(v,12,3) IN ('8.0','8.1','8.2') THEN 27 ELSE 23 END AS hdr,
+                               CASE WHEN v ~ 'mingw32' THEN 8 ELSE 4 END AS ma
+                        FROM (SELECT version() AS v) AS foo
+                    ) AS constants
+                    WHERE schemaname='public'
+                    GROUP BY 1,2,3,4,5
+                ) AS foo
+            ) AS rs
+            JOIN pg_class cc ON cc.relname = rs.tablename
+            JOIN pg_namespace nn ON cc.relnamespace = nn.oid AND nn.nspname = rs.schemaname AND nn.nspname <> 'information_schema'
+        ) AS sml
+        WHERE sml.relpages > 0
+    ) AS bloat_info
+    WHERE tbloat > 2.0;
+" | xargs)
+
+log "Bloated tables (>2x): $BLOATED_TABLES"
+
+if [ "$BLOATED_TABLES" -gt 5 ]; then
+    send_alert "warning" "Multiple bloated tables detected: $BLOATED_TABLES" "bloated_tables" "$BLOATED_TABLES"
+fi
+
+log "Database monitoring completed"
+```
