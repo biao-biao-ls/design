@@ -6,17 +6,17 @@
 
 ## 1. 核心架构 (The Core Stack - 海外优化版)
 
-我们采用 **"BFF"** 架构（Backend for Frontend），彻底移除 Supabase 依赖，转为自托管模式，获得更好的性能和控制力。**针对海外市场，特别强化 GDPR 合规、邮件服务和全球 CDN 部署。**
+我们采用 **"容器化集群"** 架构，彻底移除 Supabase 依赖，转为完全自托管模式，获得更好的性能和控制力。**针对海外市场，特别强化 GDPR 合规、邮件服务和 Docker 容器化部署。**
 
 | 模块 | 选型 | 理由 (Why?) | 海外市场优势 |
 | --- | --- | --- | --- |
-| **全栈框架** | **Nuxt 4** (Vue 3) | 单一代码库 (Monorepo) 体验，SEO 友好，自动路由，极佳的开发体验 (DX)。 | 完美支持 SSR，利于 Google SEO |
-| **后端服务** | **Nuxt 4 Server (Nitro)** | 承担 API 接口和业务逻辑，冷启动快，部署简单，与前端完美集成。 | Edge Runtime 支持，全球低延迟 |
-| **数据库** | **PostgreSQL (自托管)** | 部署在 VPS，完全控制数据，无供应商锁定，成本可控。 | 符合 GDPR 数据主权要求 |
-| **ORM** | **Drizzle ORM** | 轻量、Type-safe、冷启动快，完美契合 Serverless 环境。 | 原生支持数据导出（GDPR 要求） |
+| **全栈框架** | **Nuxt 4** (Vue 3) | 单一代码库体验，SEO 友好，自动路由，极佳的开发体验 (DX)。 | 完美支持 SSR，利于 Google SEO |
+| **后端服务** | **Nuxt 4 Server (Nitro)** | 承担 API 接口和业务逻辑，容器化部署，与前端完美集成。 | Docker 容器化，高性能部署 |
+| **数据库** | **PostgreSQL (容器化)** | 部署在 Contabo VPS，完全控制数据，无供应商锁定，成本可控。 | 符合 GDPR 数据主权要求 |
+| **ORM** | **Drizzle ORM** | 轻量、Type-safe、冷启动快，完美契合容器化环境。 | 原生支持数据导出（GDPR 要求） |
 | **鉴权系统** | **Better-Auth** | 集成 Google/Github OAuth，数据存本地库，无第三方依赖。 | **海外标配：Email + OAuth，无手机号** |
 | **支付/订阅** | **Lemon Squeezy** | 专为 SaaS 设计的"全托管"支付平台。自动处理全球税务、发票、退款。**彻底摆脱合规烦恼。** | **自动处理欧盟 VAT 和美国各州税法** |
-| **部署托管** | **Vercel** | 零配置部署 Nuxt，全球 CDN 加速，Git 提交即发布。免费层级足够支撑 MVP。 | **无需 ICP 备案，全球 CDN 加速** |
+| **部署托管** | **Contabo VPS** | 完全私有化部署，Docker 容器化集群，成本极低，完全数据控制。 | **完全私有化，月成本仅 $13** |
 | **邮件服务** | **Resend** | 开发者友好的 API，送达率高，免费额度大。 | **海外 Email is King，必备基础设施** |
 | **对象存储** | **Cloudflare R2** | 成本极低 ($0.015/GB)，全球 CDN 加速，与 PostgreSQL 完美分离。 | 全球边缘节点，符合数据本地化要求 |
 
@@ -144,7 +144,7 @@ const EMAIL_CONFIG = {
   }
 }
 
-// 邮件发送封装
+// 邮件发送封装 (Docker 容器环境)
 const sendEmail = async (options: {
   to: string
   template: string
@@ -179,25 +179,25 @@ const sendEmail = async (options: {
 }
 ```
 
-### 数据备份与容灾架构设计
+### 数据备份与容灾架构设计 (Contabo VPS)
 
 ```bash
 #!/bin/bash
-# 自动备份脚本 - /scripts/backup.sh
+# 自动备份脚本 - /opt/knzn/scripts/backup.sh
 
 # 配置变量
-BACKUP_DIR="/tmp/backups"
+BACKUP_DIR="/opt/knzn-backups"
 DATE=$(date +%Y%m%d_%H%M%S)
-DB_NAME="knzn_production"
+DB_CONTAINER="knzn-postgres"
 BACKUP_FILE="knzn_backup_${DATE}.sql"
 ENCRYPTED_FILE="${BACKUP_FILE}.gz.enc"
 
 # 创建备份目录
 mkdir -p $BACKUP_DIR
 
-# 1. 执行数据库备份
+# 1. 执行数据库备份 (Docker 容器)
 echo "Starting database backup..."
-pg_dump $DATABASE_URL > $BACKUP_DIR/$BACKUP_FILE
+docker exec $DB_CONTAINER pg_dump -U knzn_user knzn_production > $BACKUP_DIR/$BACKUP_FILE
 
 # 检查备份是否成功
 if [ $? -eq 0 ]; then
@@ -239,7 +239,7 @@ echo "Backup completed successfully: $ENCRYPTED_FILE"
 ```
 
 ```typescript
-// 备份管理 API
+// 备份管理 API (Docker 环境)
 // server/api/admin/backup/create.post.ts
 export default defineEventHandler(async (event) => {
   // 验证管理员权限
@@ -252,8 +252,8 @@ export default defineEventHandler(async (event) => {
   }
   
   try {
-    // 执行备份脚本
-    const { stdout, stderr } = await execAsync('/scripts/backup.sh')
+    // 执行备份脚本 (Docker 环境)
+    const { stdout, stderr } = await execAsync('/opt/knzn/scripts/backup.sh')
     
     // 记录备份日志
     await db.insert(backupLogs).values({
@@ -288,7 +288,7 @@ export default defineEventHandler(async (event) => {
   }
 })
 
-// 恢复备份 API
+// 恢复备份 API (Docker 环境)
 // server/api/admin/backup/restore.post.ts
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
@@ -322,10 +322,10 @@ export default defineEventHandler(async (event) => {
     await execAsync('gunzip /tmp/restore.sql.gz')
     
     // 4. 创建当前数据库备份（安全措施）
-    await execAsync('/scripts/backup.sh')
+    await execAsync('/opt/knzn/scripts/backup.sh')
     
-    // 5. 恢复数据库
-    await execAsync(`psql ${process.env.DATABASE_URL} < /tmp/restore.sql`)
+    // 5. 恢复数据库 (Docker 容器)
+    await execAsync(`docker exec knzn-postgres psql -U knzn_user -d knzn_production < /tmp/restore.sql`)
     
     // 6. 清理临时文件
     await execAsync('rm /tmp/restore.sql')
@@ -354,7 +354,7 @@ export default defineEventHandler(async (event) => {
 ```
 
 ```typescript
-// Cron Job 配置
+// Cron Job 配置 (Docker 环境)
 // server/tasks/backup.ts
 import cron from 'node-cron'
 
@@ -363,7 +363,7 @@ cron.schedule('0 2 * * *', async () => {
   console.log('Starting scheduled backup...')
   
   try {
-    await execAsync('/scripts/backup.sh')
+    await execAsync('/opt/knzn/scripts/backup.sh')
     
     // 记录成功日志
     await db.insert(backupLogs).values({
@@ -470,7 +470,7 @@ const PRIVACY_COMPLIANCE = {
     legalBasis: 'Legitimate interest + User consent',
     retentionPeriod: '3 years after last activity',
     thirdPartySharing: [
-      'Vercel (hosting)',
+      'Contabo VPS (hosting)',
       'Resend (email)',
       'Cloudflare (CDN)',
       'OpenAI (AI features)'
@@ -692,7 +692,7 @@ export default defineEventHandler(async (event) => {
 * [ ] 初始化 Nuxt 4 项目，配置 UnoCSS, Pinia
 * [ ] 搭建 PostgreSQL Docker 环境，配置 Drizzle ORM
 * [ ] 实现 Better-Auth 集成 (GitHub / Google 登录)
-* [ ] 部署 Hello World 到 Vercel
+* [ ] 部署 Hello World 到 Contabo VPS
 
 ### 🗓️ Week 2: 首页与核心交互 (The Hook)
 
@@ -748,7 +748,7 @@ export default defineEventHandler(async (event) => {
 * 定期备份 PostgreSQL 数据，避免数据丢失
 
 5. **性能监控**
-* 使用 Vercel Analytics 监控页面性能
+* 使用 Docker 容器监控和日志系统监控应用性能
 * 监控 PostgreSQL 连接数，避免连接池耗尽
 
 6. **Better-Auth 兼容性备选方案**

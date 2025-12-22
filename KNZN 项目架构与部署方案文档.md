@@ -3,6 +3,8 @@
 ## 📋 文档概述
 
 **项目名称**: KNZN 硬件学习网站 - 赛博朋克风格游戏化平台  
+**部署方案**: Contabo VPS 单机容器化集群  
+**硬件配置**: Contabo VPS L (12GB RAM, 6 CPU cores, 100GB NVMe)  
 **文档版本**: v1.0  
 **编制时间**: 2024-12-23  
 **审核状态**: ✅ 最终确定版本  
@@ -31,11 +33,23 @@ KNZN 是一个面向全球开发者的硬件学习平台，采用赛博朋克风
                                 │
                                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      CDN 层 (Vercel Edge)                      │
+│                    Cloudflare CDN (可选)                       │
 ├─────────────────────────────────────────────────────────────────┤
-│ • 全球边缘节点缓存                                              │
-│ • 静态资源分发 (JS/CSS/Images)                                 │
-│ • 自动 HTTPS 和域名管理                                         │
+│ • 全球 CDN 加速 (静态资源)                                      │
+│ • DDoS 防护                                                     │
+│ • DNS 管理                                                      │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Contabo VPS (单机集群)                      │
+├─────────────────────────────────────────────────────────────────┤
+│                     Nginx 容器 (入口)                          │
+│ • SSL 证书管理 (Let's Encrypt)                                 │
+│ • HTTP/2 + Gzip 压缩                                           │
+│ • 静态资源缓存                                                  │
+│ • 反向代理到 Nuxt 容器                                          │
+│ • 安全头配置                                                    │
 └─────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
@@ -56,11 +70,11 @@ KNZN 是一个面向全球开发者的硬件学习平台，采用赛博朋克风
 ┌─────────────────────────────────────────────────────────────────┐
 │                      数据层 (Data Layer)                       │
 ├─────────────────────────────────────────────────────────────────┤
-│ PostgreSQL (VPS)        │ Cloudflare R2        │ Redis (可选)   │
-│ • 用户数据              │ • 静态文件存储        │ • 缓存层       │
-│ • 学习进度              │ • 图片和视频          │ • 会话存储     │
-│ • 社区内容              │ • 蓝图文件            │ • 排行榜       │
-│ • 系统配置              │ • 备份文件            │                │
+│ PostgreSQL 容器     │ Redis 容器        │ Cloudflare R2         │
+│ • 用户数据          │ • Nitro 缓存      │ • 静态文件存储        │
+│ • 学习进度          │ • 会话存储        │ • 图片和视频          │
+│ • 社区内容          │ • 限流控制        │ • 蓝图文件            │
+│ • 系统配置          │ • 排行榜缓存      │ • 备份文件            │
 └─────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
@@ -102,9 +116,16 @@ const FRONTEND_STACK = {
 ```typescript
 const BACKEND_STACK = {
   runtime: 'Nuxt 4 Server (Nitro)',
-  database: 'PostgreSQL (自托管)',
+  database: 'PostgreSQL (Docker 容器)',
   orm: 'Drizzle ORM',
   authentication: 'Better-Auth',
+  
+  deployment: {
+    vps: 'Contabo VPS',
+    orchestration: 'Docker Compose',
+    webServer: 'Nginx',
+    ssl: 'Let\'s Encrypt'
+  },
   
   services: {
     email: 'Resend',
@@ -250,8 +271,8 @@ const DATABASE_CONFIG = {
     password: process.env.DATABASE_PASSWORD,
     
     // 连接池设置
-    max: 15, // 最大连接数
-    min: 2,  // 最小连接数
+    max: 30, // 最大连接数 (12GB RAM 可支持更多连接)
+    min: 5,  // 最小连接数
     idle: 30000, // 空闲超时 30s
     acquire: 60000, // 获取连接超时 60s
     
@@ -685,48 +706,83 @@ cron.schedule('0 2 * * *', async () => {
 
 ## 🚀 部署架构
 
-### Vercel 部署配置
+### Docker Compose 部署配置
 
-```json
-// vercel.json
-{
-  "version": 2,
-  "builds": [
-    {
-      "src": "nuxt.config.ts",
-      "use": "@nuxtjs/vercel-builder"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/"
-    }
-  ],
-  "env": {
-    "DATABASE_URL": "@database_url",
-    "GOOGLE_CLIENT_ID": "@google_client_id",
-    "GOOGLE_CLIENT_SECRET": "@google_client_secret",
-    "GITHUB_CLIENT_ID": "@github_client_id",
-    "GITHUB_CLIENT_SECRET": "@github_client_secret",
-    "RESEND_API_KEY": "@resend_api_key",
-    "OPENAI_API_KEY": "@openai_api_key",
-    "R2_ACCESS_KEY_ID": "@r2_access_key_id",
-    "R2_SECRET_ACCESS_KEY": "@r2_secret_access_key",
-    "CLOUDFLARE_ACCOUNT_ID": "@cloudflare_account_id",
-    "LEMON_SQUEEZY_API_KEY": "@lemon_squeezy_api_key",
-    "BACKUP_PASSWORD": "@backup_password"
-  },
-  "functions": {
-    "server/api/**/*.ts": {
-      "maxDuration": 30
-    }
-  }
-}
+```yaml
+# docker-compose.yml
+version: '3.8'
+
+services:
+  # 🌐 Nginx 反向代理
+  nginx:
+    build: ./docker/nginx
+    container_name: knzn-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - certbot_certs:/etc/letsencrypt
+    depends_on:
+      - app
+    restart: unless-stopped
+    networks:
+      - knzn-network
+
+  # 🚀 Nuxt 4 应用
+  app:
+    build:
+      context: .
+      dockerfile: ./docker/app/Dockerfile
+    container_name: knzn-app
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://knzn_user:${DATABASE_PASSWORD}@postgres:5432/knzn_production
+      - REDIS_URL=redis://redis:6379
+    env_file:
+      - .env.production
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    networks:
+      - knzn-network
+
+  # 🗄️ PostgreSQL 数据库
+  postgres:
+    image: postgres:15-alpine
+    container_name: knzn-postgres
+    environment:
+      POSTGRES_DB: knzn_production
+      POSTGRES_USER: knzn_user
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - knzn-network
+
+  # 🔄 Redis 缓存
+  redis:
+    image: redis:7-alpine
+    container_name: knzn-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - knzn-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  certbot_certs:
+
+networks:
+  knzn-network:
+    driver: bridge
 ```
 
 ### Nuxt 配置
@@ -773,15 +829,17 @@ export default defineNuxtConfig({
     }
   },
   
-  // Nitro 配置
+  // Nitro 配置 - Docker 部署
   nitro: {
+    preset: 'node-server', // 改为 node-server 用于 Docker 部署
     experimental: {
       wasm: true
     },
     storage: {
       redis: {
         driver: 'redis',
-        // Redis 配置（可选）
+        host: process.env.REDIS_HOST || 'redis',
+        port: process.env.REDIS_PORT || 6379
       }
     }
   },
@@ -804,44 +862,127 @@ export default defineNuxtConfig({
 ### VPS PostgreSQL 部署
 
 ```bash
-# PostgreSQL 安装和配置脚本
+# PostgreSQL 安装和配置脚本 (Contabo VPS)
 #!/bin/bash
 
-# 1. 安装 PostgreSQL
-sudo apt update
-sudo apt install postgresql postgresql-contrib
+# 1. 更新系统
+sudo apt update && sudo apt upgrade -y
 
-# 2. 创建数据库和用户
-sudo -u postgres psql << EOF
-CREATE DATABASE knzn_production;
-CREATE USER knzn_user WITH ENCRYPTED PASSWORD 'your_secure_password';
-GRANT ALL PRIVILEGES ON DATABASE knzn_production TO knzn_user;
-ALTER USER knzn_user CREATEDB;
-\q
+# 2. 安装 Docker 和 Docker Compose
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker $USER
+sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+
+# 3. 创建项目目录
+sudo mkdir -p /opt/knzn
+sudo chown $USER:$USER /opt/knzn
+cd /opt/knzn
+
+# 4. 创建 Docker Compose 配置
+cat > docker-compose.yml << 'EOF'
+version: '3.8'
+
+services:
+  # Nginx 反向代理
+  nginx:
+    image: nginx:alpine
+    container_name: knzn-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - certbot_certs:/etc/letsencrypt
+    depends_on:
+      - app
+    restart: unless-stopped
+    networks:
+      - knzn-network
+
+  # Nuxt 4 应用
+  app:
+    image: ghcr.io/your-username/knzn-app:latest
+    container_name: knzn-app
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://knzn_user:${DATABASE_PASSWORD}@postgres:5432/knzn_production
+      - REDIS_URL=redis://redis:6379
+    env_file:
+      - .env.production
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    networks:
+      - knzn-network
+
+  # PostgreSQL 数据库
+  postgres:
+    image: postgres:15-alpine
+    container_name: knzn-postgres
+    environment:
+      POSTGRES_DB: knzn_production
+      POSTGRES_USER: knzn_user
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - knzn-network
+
+  # Redis 缓存
+  redis:
+    image: redis:7-alpine
+    container_name: knzn-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - knzn-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  certbot_certs:
+
+networks:
+  knzn-network:
+    driver: bridge
 EOF
 
-# 3. 配置 PostgreSQL
-sudo nano /etc/postgresql/14/main/postgresql.conf
-# 修改以下配置：
-# listen_addresses = '*'
-# max_connections = 100
-# shared_buffers = 256MB
-# effective_cache_size = 1GB
-
-sudo nano /etc/postgresql/14/main/pg_hba.conf
-# 添加以下行：
-# host knzn_production knzn_user 0.0.0.0/0 md5
-
-# 4. 重启 PostgreSQL
-sudo systemctl restart postgresql
-sudo systemctl enable postgresql
-
 # 5. 配置防火墙
-sudo ufw allow 5432/tcp
+sudo ufw allow 22/tcp
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw --force enable
 
-# 6. 创建备份目录
-sudo mkdir -p /var/backups/postgresql
-sudo chown postgres:postgres /var/backups/postgresql
+# 6. 创建环境变量文件
+cat > .env.production << 'EOF'
+DATABASE_PASSWORD=your_secure_password_here
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+GITHUB_CLIENT_ID=your_github_client_id
+GITHUB_CLIENT_SECRET=your_github_client_secret
+RESEND_API_KEY=your_resend_api_key
+OPENAI_API_KEY=your_openai_api_key
+R2_ACCESS_KEY_ID=your_r2_access_key
+R2_SECRET_ACCESS_KEY=your_r2_secret_key
+CLOUDFLARE_ACCOUNT_ID=your_cloudflare_account_id
+LEMON_SQUEEZY_API_KEY=your_lemon_squeezy_api_key
+BACKUP_PASSWORD=your_backup_encryption_password
+SITE_URL=https://knzn.net
+EOF
+
+echo "Contabo VPS setup completed. Please:"
+echo "1. Edit .env.production with your actual values"
+echo "2. Configure Nginx SSL certificates"
+echo "3. Run: docker-compose up -d"
 ```
 
 ## 🔒 安全配置
@@ -1156,7 +1297,7 @@ export const cached = (ttl: number = 300) => {
 
 ```yaml
 # .github/workflows/deploy.yml
-name: Deploy to Vercel
+name: Deploy to Contabo VPS
 
 on:
   push:
@@ -1183,15 +1324,34 @@ jobs:
     - name: Run tests
       run: npm run test
     
-    - name: Build application
-      run: npm run build
+    - name: Build Docker image
+      run: |
+        docker build -t knzn-app:${{ github.sha }} .
+        docker tag knzn-app:${{ github.sha }} ghcr.io/${{ github.repository }}/knzn-app:latest
     
-    - name: Deploy to Vercel
-      uses: vercel/action@v1
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v2
       with:
-        vercel-token: ${{ secrets.VERCEL_TOKEN }}
-        vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-        vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Push Docker image
+      run: |
+        docker push ghcr.io/${{ github.repository }}/knzn-app:${{ github.sha }}
+        docker push ghcr.io/${{ github.repository }}/knzn-app:latest
+    
+    - name: Deploy to Contabo VPS
+      uses: appleboy/ssh-action@v0.1.5
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USER }}
+        key: ${{ secrets.VPS_SSH_KEY }}
+        script: |
+          cd /opt/knzn
+          docker-compose pull
+          docker-compose up -d --force-recreate
+          docker system prune -f
 ```
 
 ### 部署检查清单
@@ -1200,10 +1360,11 @@ jobs:
 ## 部署前检查清单
 
 ### 环境配置
-- [ ] 所有环境变量已在 Vercel 中配置
+- [ ] 所有环境变量已在 Contabo VPS 中配置
 - [ ] PostgreSQL 数据库已部署并可访问
 - [ ] Cloudflare R2 存储桶已创建
 - [ ] DNS 记录已正确配置
+- [ ] SSL 证书已配置 (Let's Encrypt)
 
 ### 第三方服务
 - [ ] Google OAuth 应用已配置
@@ -1217,6 +1378,7 @@ jobs:
 - [ ] 安全头已设置
 - [ ] CORS 策略已配置
 - [ ] 备份系统已测试
+- [ ] VPS 防火墙已配置
 
 ### 功能测试
 - [ ] 用户注册/登录流程
@@ -1226,7 +1388,7 @@ jobs:
 - [ ] 数据库备份恢复
 
 ### 性能优化
-- [ ] 静态资源 CDN 配置
+- [ ] Nginx 缓存策略已配置
 - [ ] 数据库查询优化
 - [ ] 缓存策略实施
 - [ ] 图片压缩配置
@@ -1239,17 +1401,11 @@ jobs:
 ```typescript
 const MONTHLY_COSTS = {
   // 基础设施
-  vercel: {
-    plan: 'Pro',
-    cost: 20, // $20/月
-    description: '无限带宽，边缘函数，分析'
-  },
-  
-  vps: {
-    provider: 'DigitalOcean/Linode',
-    plan: '2GB RAM, 1 CPU',
-    cost: 12, // $12/月
-    description: 'PostgreSQL 数据库服务器'
+  contabo: {
+    plan: 'VPS L',
+    specs: '12GB RAM, 6 CPU cores, 100GB NVMe',
+    cost: 13, // $13/月
+    description: '完全私有化部署，Docker 容器化集群'
   },
   
   cloudflareR2: {
@@ -1281,7 +1437,7 @@ const MONTHLY_COSTS = {
   },
   
   // 总计
-  total: 72, // $72/月
+  total: 53, // $53/月 (节省 $19/月)
   
   // 收入目标
   revenue: {
@@ -1291,8 +1447,8 @@ const MONTHLY_COSTS = {
   },
   
   // 净利润
-  netProfit: 5495 - 72, // $5,423/月
-  profitMargin: '98.7%'
+  netProfit: 5495 - 53, // $5,442/月
+  profitMargin: '99.0%'
 }
 ```
 
@@ -1309,7 +1465,7 @@ const DEVELOPMENT_TIMELINE = {
       'Nuxt 4 项目初始化',
       'PostgreSQL + Drizzle ORM 配置',
       'Better-Auth 集成',
-      'Vercel 部署配置',
+      'Contabo VPS 部署配置',
       '基础 UI 组件库'
     ]
   },

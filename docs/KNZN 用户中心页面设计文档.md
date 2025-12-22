@@ -401,14 +401,14 @@ const DATABASE_CONFIG = {
     password: process.env.DATABASE_PASSWORD,
     
     // 连接池设置
-    max: 15, // 最大连接数
-    min: 2,  // 最小连接数
+    max: 30, // 最大连接数 (12GB RAM 可支持更多连接)
+    min: 5,  // 最小连接数
     idle: 30000, // 空闲超时 30s
     acquire: 60000, // 获取连接超时 60s
     
     monitoring: {
       enabled: true,
-      alertThreshold: 12,
+      alertThreshold: 25, // 调整为新连接池最大值的 80%
       logSlowQueries: true,
       slowQueryThreshold: 1000
     }
