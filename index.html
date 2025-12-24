@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>宝宝八字排盘与五行分析</title>
+    <style>
+      /* 打印专用样式 */
+      @media print {
+        @page {
+          margin: 2cm;
+          size: A4;
+        }
+        
+        body {
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+      }
+
+      /* 基础样式 */
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", sans-serif;
+        line-height: 1.8;
+        color: #2c3e50;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 40px 20px;
+        background: #ffffff;
+      }
+
+      /* 标题样式 */
+      h1 {
+        font-size: 28px;
+        font-weight: 600;
+        color: #1a202c;
+        text-align: center;
+        margin: 0 0 40px 0;
+        padding: 20px 0;
+        border-bottom: 3px solid #e2e8f0;
+        position: relative;
+      }
+
+      h1::after {
+        content: '';
+        position: absolute;
+        bottom: -3px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 60px;
+        height: 3px;
+        background: #4a90e2;
+      }
+
+      h2 {
+        font-size: 22px;
+        font-weight: 600;
+        color: #2d3748;
+        margin: 35px 0 20px 0;
+        padding: 12px 0 12px 20px;
+        border-left: 4px solid #4a90e2;
+        background: linear-gradient(90deg, #f7fafc 0%, #ffffff 100%);
+      }
+
+      h3 {
+        font-size: 18px;
+        font-weight: 600;
+        color: #4a5568;
+        margin: 25px 0 15px 0;
+        padding: 8px 0;
+        border-bottom: 1px solid #e2e8f0;
+      }
+
+      h4 {
+        font-size: 16px;
+        font-weight: 600;
+        color: #718096;
+        margin: 20px 0 10px 0;
+      }
+
+      /* 段落样式 */
+      p {
+        margin: 15px 0;
+        text-align: justify;
+        text-justify: inter-ideograph;
+      }
+
+      /* 强调文本 */
+      strong {
+        color: #2b6cb0;
+        font-weight: 600;
+      }
+
+      /* 列表样式 */
+      ul, ol {
+        margin: 15px 0;
+        padding-left: 25px;
+      }
+
+      li {
+        margin: 8px 0;
+        line-height: 1.6;
+      }
+
+      /* 表格样式 */
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 20px 0;
+        background: #ffffff;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      }
+
+      th, td {
+        padding: 12px 15px;
+        text-align: left;
+        border: 1px solid #e2e8f0;
+      }
+
+      th {
+        background: #f8fafc;
+        font-weight: 600;
+        color: #2d3748;
+      }
+
+      tr:nth-child(even) {
+        background: #f9fafb;
+      }
+
+      /* 分隔线样式 */
+      hr {
+        border: none;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, #e2e8f0, transparent);
+        margin: 30px 0;
+      }
+
+      /* 引用块样式 */
+      blockquote {
+        margin: 25px 0;
+        padding: 20px 25px;
+        background: #f8fafc;
+        border-left: 4px solid #4a90e2;
+        font-style: italic;
+        color: #4a5568;
+        position: relative;
+      }
+
+      blockquote::before {
+        content: '"';
+        font-size: 60px;
+        color: #cbd5e0;
+        position: absolute;
+        top: -10px;
+        left: 10px;
+        font-family: serif;
+      }
+
+      blockquote p {
+        margin: 8px 0;
+        text-align: center;
+        font-size: 16px;
+        line-height: 1.6;
+      }
+
+      /* 特殊内容样式 */
+      .highlight {
+        background: #fff3cd;
+        padding: 2px 6px;
+        border-radius: 3px;
+        color: #856404;
+      }
+
+      /* 打印优化 */
+      @media print {
+        body {
+          font-size: 12pt;
+          line-height: 1.6;
+        }
+        
+        h1 {
+          font-size: 18pt;
+          page-break-after: avoid;
+        }
+        
+        h2 {
+          font-size: 16pt;
+          page-break-after: avoid;
+          margin-top: 20pt;
+        }
+        
+        h3 {
+          font-size: 14pt;
+          page-break-after: avoid;
+        }
+        
+        h4 {
+          font-size: 12pt;
+          page-break-after: avoid;
+        }
+        
+        table {
+          page-break-inside: avoid;
+        }
+        
+        blockquote {
+          page-break-inside: avoid;
+        }
+        
+        ul, ol {
+          page-break-inside: avoid;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1 id="宝宝八字排盘与五行分析">宝宝八字排盘与五行分析</h1>
+    <h2 id="真太阳时校准">真太阳时校准</h2>
+    <p>
+      <strong>出生地信息</strong> - 出生地：广东省深圳市（东经约114°E） -
+      北京时间：2025年12月24日 12:24 -
+      时间校正说明：由于深圳经度比东八区基准（120°E）偏西约6°，真太阳时比北京时间晚约24分钟
+    </p>
+    <p>
+      <strong>校正后的出生时间</strong> -
+      <strong>真太阳时：2025年12月24日 12:00（午时）</strong>
+    </p>
+    <hr />
+    <h2 id="生辰八字四柱">生辰八字（四柱）</h2>
+    <p><strong>乙巳 戊子 丁卯 丙午</strong></p>
+    <h3 id="四柱详解">四柱详解</h3>
+    <h4 id="年柱乙巳">年柱：乙巳</h4>
+    <p>2025年立春后出生，为乙巳年。</p>
+    <h4 id="月柱戊子">月柱：戊子</h4>
+    <ul>
+      <li>12月24日处于大雪（12月7日）与冬至（12月21日）之间，为子月</li>
+      <li>年干为乙，依五虎遁”乙庚之岁戊为头”，推得月干为戊</li>
+      <li>故为戊子</li>
+    </ul>
+    <h4 id="日柱丁卯">日柱：丁卯</h4>
+    <ul>
+      <li>通过精密计算与万年历核对</li>
+      <li>公历2025年12月24日，日柱确为丁卯</li>
+    </ul>
+    <h4 id="时柱丙午">时柱：丙午</h4>
+    <ul>
+      <li>午时出生</li>
+      <li>日干为丁，依五鼠遁”丁壬庚子居”，顺推至午时，时干为丙</li>
+      <li>故为丙午</li>
+    </ul>
+    <hr />
+    <h2 id="五行强弱与喜用神分析">五行强弱与喜用神分析</h2>
+    <h3 id="日主属性">日主属性</h3>
+    <p><strong>日主：丁火</strong>，为灯烛之火</p>
+    <h3 id="五行分布">五行分布</h3>
+    <ul>
+      <li><strong>木</strong>：乙、卯</li>
+      <li><strong>火</strong>：丁、丙、巳、午</li>
+      <li><strong>土</strong>：戊</li>
+      <li><strong>水</strong>：子</li>
+      <li><strong>金</strong>：藏于巳中（极弱）</li>
+    </ul>
+    <p>表面看五行俱全，但<strong>金弱极</strong>，这是命局的明显特点。</p>
+    <h3 id="旺衰分析">旺衰分析</h3>
+    <p>
+      丁火生于仲冬子月，七杀当令，初看似身弱。然而： - 日坐卯木偏印 -
+      年支巳火为根 - 时柱丙午劫财羊刃强助 - 天干乙木生火 - 地支巳午半会火局
+    </p>
+    <p>全局木火两旺，成<strong>身强印旺</strong>之象。</p>
+    <h3 id="喜用神判断">喜用神判断</h3>
+    <p>
+      身强需克、泄、耗以平衡。月令子水七杀本为用神，但被旺火耗、厚土克，力量受损。
+    </p>
+    <p><strong>综合判断：</strong></p>
+    <table>
+      <thead>
+        <tr>
+          <th>排序</th>
+          <th>喜用神</th>
+          <th>作用机制</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>首选</td>
+          <td><strong>金</strong></td>
+          <td>财星制印、耗身、生杀，一举三得</td>
+        </tr>
+        <tr>
+          <td>次选</td>
+          <td><strong>水</strong></td>
+          <td>官杀以克身，增强平衡</td>
+        </tr>
+        <tr>
+          <td>可选</td>
+          <td><strong>土</strong></td>
+          <td>食伤以泄秀生财</td>
+        </tr>
+      </tbody>
+    </table>
+    <p><strong>忌神</strong>：木（印星）、火（比劫）</p>
+    <hr />
+    <h2 id="起名核心策略">起名核心策略</h2>
+    <h3 id="策略一补益五行">策略一：补益五行</h3>
+    <p>
+      名字中应优先使用<strong>五行属”金”</strong>的字，其次可使用属”水”或”土”的字，以达到平衡八字、补益命局的目的。
+    </p>
+    <h3 id="策略二寓意风格">策略二：寓意风格</h3>
+    <p>契合”平安喜乐”的期望，选择温婉、清雅、聪慧、豁达之字。</p>
+    <h3 id="策略三避讳">策略三：避讳</h3>
+    <p>自动避开了父母名中的”焕”、“标”、“晓”、“婷”等字。</p>
+    <hr />
+    <h2 id="精选名字推荐">精选名字推荐</h2>
+    <h3 id="名字一张钟乐">名字一：张钟乐</h3>
+    <p><strong>五行配置</strong>：金-金-火（火为喜神相生，整体强金）</p>
+    <p>
+      <strong>得分解析</strong>：
+      双”金”直补命局最需的财星，有力制衡过旺的印比，使命局趋向中和。寓意一生富足安乐，内心丰盈。
+    </p>
+    <p><strong>字义解释</strong>： - 钟：汇聚、专注 - 乐：快乐</p>
+    <p>意为”钟爱快乐，汇聚美好”。</p>
+    <p>
+      <strong>文化出处</strong>： 出自《诗经·周南·关雎》：“窈窕淑女，钟鼓乐之。”
+      原指用钟鼓之乐使淑女快乐，引申为生活和谐美满，充满喜乐。
+    </p>
+    <p>
+      <strong>音律分析</strong>： 阴平（张）- 阴平（钟）-
+      去声（乐）。音调平仄有致，读来朗朗上口，大气而欢快。
+    </p>
+    <hr />
+    <h3 id="名字二张清涵">名字二：张清涵</h3>
+    <p><strong>五行配置</strong>：水-水-水（强水助用）</p>
+    <p>
+      <strong>得分解析</strong>：
+      三字皆属水，强力增强命局中的官杀（水）力量，以约束过旺的日主，带来理智、贵气与秩序。水亦能润局，调和全局。
+    </p>
+    <p><strong>字义解释</strong>： - 清：清澈、高洁 - 涵：包容、涵养</p>
+    <p>意为”清雅包容，涵养深厚”。</p>
+    <p>
+      <strong>文化出处</strong>：
+      出自唐代韩愈《蓝田县丞厅壁记》：“水之性清，土者洿之，不能清；人之性安，嗜欲乱之，不能安。”
+      与”涵”字结合，喻指内心澄澈，有容乃大。
+    </p>
+    <p>
+      <strong>音律分析</strong>： 阴平（张）- 阴平（清）-
+      阳平（涵）。声调温和上扬，如清泉流淘，温婉动听。
+    </p>
+    <hr />
+    <h3 id="名字三张诗咏">名字三：张诗咏</h3>
+    <p><strong>五行配置</strong>：金-金-土（土生金，流通有情）</p>
+    <p>
+      <strong>得分解析</strong>：
+      “诗”字属金，直接补益；“咏”字属土，土能泄火生金，形成良好流通。名字五行配置巧妙，既补不足，又促流通。
+    </p>
+    <p><strong>字义解释</strong>： - 诗：文雅、才情 - 咏：歌咏、抒怀</p>
+    <p>意为”富有诗才，歌咏人生”。</p>
+    <p>
+      <strong>文化出处</strong>： 出自《论语·季氏》：“不学诗，无以言。”
+      又《诗经·大序》：“诗者，志之所之也。在心为志，发言为诗。”
+      寓意女孩有文采，懂表达，生活充满诗意。
+    </p>
+    <p>
+      <strong>音律分析</strong>： 阴平（张）- 阴平（诗）-
+      上声（咏）。前两平后一仄，音韵优美，富有节奏感。
+    </p>
+    <hr />
+    <h2 id="最后寄语">最后寄语</h2>
+    <p>以上名字均围绕八字喜用神”金”展开，兼顾了文化出处与美好寓意。</p>
+    <ul>
+      <li><strong>张钟乐</strong>最贴合”平安喜乐”的直接诉求</li>
+      <li><strong>张诗咏</strong>则在气质上更为清雅文艺</li>
+    </ul>
+    <p>
+      名字是父母赠予孩子的第一份珍贵礼物，承载着爱与祝福。建议您与家人一起，从音、形、义及与姓氏搭配的整体感觉出发，选择最触动心弦的那一个。
+    </p>
+    <hr />
+    <h2 id="结语诗句">结语诗句</h2>
+    <blockquote>
+      <p>乙巳炉中火耀空，戊子涧下水溟濛。</p>
+      <p>喜得精金镕作器，清涵诗咏乐融融。</p>
+      <p>锦心绣口承嘉瑞，玉映兰闺气自虹。</p>
+      <p>莫道冬深寒气重，芳名既定暖春风。</p>
+    </blockquote>
+  </body>
+</html>
