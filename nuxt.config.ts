@@ -8,6 +8,7 @@ export default defineNuxtConfig({
     '@nuxt/image',
     '@pinia/nuxt',
     '@vueuse/nuxt',
+    '@unocss/nuxt',
   ],
 
   // 开发工具
@@ -45,6 +46,14 @@ export default defineNuxtConfig({
     compatibilityVersion: 4,
   },
 
+  // 组件自动导入配置
+  components: [
+    {
+      path: '~/components',
+      pathPrefix: false,
+    },
+  ],
+
   // 兼容性日期
   compatibilityDate: '2025-12-26',
 
@@ -79,8 +88,13 @@ export default defineNuxtConfig({
 
   // 图片优化配置
   image: {
+    // 开发环境使用 IPX，生产环境使用 Cloudflare
+    provider: process.env.NODE_ENV === 'production' ? 'cloudflare' : 'ipx',
+    // 生产环境使用 Cloudflare 图像优化
     cloudflare: {
       baseURL: 'https://knzn.net',
     },
+    // 静态图像优化配置
+    staticFilename: '[publicPath]/images/[name]-[hash][ext]',
   },
 })

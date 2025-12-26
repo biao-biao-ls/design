@@ -1,70 +1,118 @@
 <template>
-  <div class="container mx-auto px-4 py-8">
-    <!-- 欢迎页面 -->
-    <div class="text-center">
-      <h1 class="text-4xl font-bold text-accent-cyber mb-4">
+  <div class="container-cyber py-16">
+    <!-- 欢迎区域 -->
+    <section class="text-center mb-16">
+      <h1 class="text-cyber-title mb-6">
         欢迎来到 KNZN 硬件学习平台
       </h1>
-      <p class="text-xl text-secondary mb-8">
-        专业的硬件学习和仿真平台，支持 Arduino、ESP32 等硬件开发
+      <p class="text-cyber-subtitle mb-8 max-w-2xl mx-auto">
+        专业的硬件学习和仿真平台，支持 Arduino、ESP32 等硬件开发，
+        集成 Wokwi 仿真器，提供完整的学习体验。
       </p>
+      <div class="flex-center gap-4">
+        <CyberButton variant="primary">
+          开始学习
+        </CyberButton>
+        <CyberButton variant="default">
+          <NuxtLink to="/unocss-demo">
+            查看主题演示
+          </NuxtLink>
+        </CyberButton>
+      </div>
+    </section>
 
-      <!-- 功能特性 -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-12">
-        <div class="bg-card border border-neon p-6 rounded-lg">
-          <div class="text-accent-cyber text-2xl mb-4">
-            🔧
+    <!-- 特性展示 -->
+    <section class="grid md:grid-cols-3 gap-8 mb-16">
+      <CyberCard hover-effect="pink">
+        <template #header>
+          <div class="flex-center mb-4">
+            <div class="i-heroicons-cpu-chip text-4xl text-accent"></div>
           </div>
-          <h3 class="text-lg font-semibold mb-2">
+          <h3 class="text-xl font-semibold text-accent text-center">
             硬件仿真
           </h3>
-          <p class="text-secondary">
-            支持多种硬件平台的在线仿真，无需实体硬件即可学习
-          </p>
-        </div>
+        </template>
+        <p class="text-secondary text-center">
+          集成 Wokwi 仿真器，支持 Arduino、ESP32 等多种硬件平台的在线仿真。
+        </p>
+      </CyberCard>
 
-        <div class="bg-card border border-neon p-6 rounded-lg">
-          <div class="text-accent-cyber text-2xl mb-4">
-            📚
+      <CyberCard hover-effect="blue">
+        <template #header>
+          <div class="flex-center mb-4">
+            <div class="i-heroicons-academic-cap text-4xl text-accent"></div>
           </div>
-          <h3 class="text-lg font-semibold mb-2">
-            学习资源
+          <h3 class="text-xl font-semibold text-accent text-center">
+            在线学习
           </h3>
-          <p class="text-secondary">
-            丰富的教程、示例代码和项目案例
-          </p>
-        </div>
+        </template>
+        <p class="text-secondary text-center">
+          提供完整的硬件开发教程，从基础到进阶，循序渐进的学习路径。
+        </p>
+      </CyberCard>
 
-        <div class="bg-card border border-neon p-6 rounded-lg">
-          <div class="text-accent-cyber text-2xl mb-4">
-            👥
+      <CyberCard :glowing="true">
+        <template #header>
+          <div class="flex-center mb-4">
+            <div class="i-heroicons-code-bracket text-4xl text-accent"></div>
           </div>
-          <h3 class="text-lg font-semibold mb-2">
-            社区交流
+          <h3 class="text-xl font-semibold text-accent text-center">
+            代码编辑
           </h3>
-          <p class="text-secondary">
-            与其他开发者分享经验，共同学习成长
-          </p>
+        </template>
+        <p class="text-secondary text-center">
+          内置代码编辑器，支持语法高亮、智能提示等现代开发功能。
+        </p>
+      </CyberCard>
+    </section>
+
+    <!-- 技术栈展示 -->
+    <section class="text-center">
+      <h2 class="text-2xl font-cyber text-accent mb-8">
+        技术栈
+      </h2>
+      <div class="grid grid-cols-4 md:grid-cols-8 gap-6">
+        <div class="flex-center flex-col">
+          <div class="i-simple-icons-nuxtdotjs text-3xl text-accent mb-2"></div>
+          <span class="text-xs text-secondary">Nuxt 4</span>
+        </div>
+        <div class="flex-center flex-col">
+          <div class="i-simple-icons-vue-dot-js text-3xl text-accent mb-2"></div>
+          <span class="text-xs text-secondary">Vue 3</span>
+        </div>
+        <div class="flex-center flex-col">
+          <div class="i-simple-icons-typescript text-3xl text-accent mb-2"></div>
+          <span class="text-xs text-secondary">TypeScript</span>
+        </div>
+        <div class="flex-center flex-col">
+          <div class="i-simple-icons-unocss text-3xl text-accent mb-2"></div>
+          <span class="text-xs text-secondary">UnoCSS</span>
+        </div>
+        <div class="flex-center flex-col">
+          <div class="i-simple-icons-postgresql text-3xl text-accent mb-2"></div>
+          <span class="text-xs text-secondary">PostgreSQL</span>
+        </div>
+        <div class="flex-center flex-col">
+          <div class="i-simple-icons-drizzle text-3xl text-accent mb-2"></div>
+          <span class="text-xs text-secondary">Drizzle ORM</span>
+        </div>
+        <div class="flex-center flex-col">
+          <div class="i-simple-icons-docker text-3xl text-accent mb-2"></div>
+          <span class="text-xs text-secondary">Docker</span>
+        </div>
+        <div class="flex-center flex-col">
+          <div class="i-simple-icons-pinia text-3xl text-accent mb-2"></div>
+          <span class="text-xs text-secondary">Pinia</span>
         </div>
       </div>
-
-      <!-- 快速开始按钮 -->
-      <div class="mt-12">
-        <NuxtLink
-          to="/auth/login"
-          class="inline-block bg-accent-cyber text-black px-8 py-3 rounded-lg font-semibold hover:opacity-80 transition-opacity"
-        >
-          开始学习
-        </NuxtLink>
-      </div>
-    </div>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-// 页面 SEO
+// 页面元数据
 useSeoMeta({
-  title: '首页 - KNZN 硬件学习平台',
-  description: '开始您的硬件学习之旅，掌握 Arduino、ESP32 等硬件开发技能',
+  title: 'KNZN 硬件学习平台 - 专业的硬件开发学习平台',
+  description: '专业的硬件学习和仿真平台，支持 Arduino、ESP32 等硬件开发，集成 Wokwi 仿真器',
 })
 </script>
