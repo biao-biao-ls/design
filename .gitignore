@@ -1,135 +1,81 @@
-# Dependencies
-node_modules/
+# Nuxt 相关
+.nuxt
+.output
+.nitro
+.cache
+dist
+
+# Node.js 相关
+node_modules
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
 
-# Runtime data
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# 日志文件
+logs
+*.log
+
+# 运行时数据
 pids
 *.pid
 *.seed
 *.pid.lock
 
-# Coverage directory used by tools like istanbul
-coverage/
+# 覆盖率目录
+coverage
 *.lcov
 
-# nyc test coverage
+# nyc 测试覆盖率
 .nyc_output
 
-# Grunt intermediate storage (https://gruntjs.com/creating-plugins#storing-task-files)
-.grunt
-
-# Bower dependency directory (https://bower.io/)
-bower_components
-
-# node-waf configuration
-.lock-wscript
-
-# Compiled binary addons (https://nodejs.org/api/addons.html)
-build/Release
-
-# Dependency directories
+# 依赖目录
 jspm_packages/
 
-# TypeScript cache
+# TypeScript 缓存
 *.tsbuildinfo
 
-# Optional npm cache directory
+# 可选的 npm 缓存目录
 .npm
 
-# Optional eslint cache
+# 可选的 eslint 缓存
 .eslintcache
 
-# Optional stylelint cache
-.stylelintcache
-
-# Microbundle cache
-.rpt2_cache/
-.rts2_cache_cjs/
-.rts2_cache_es/
-.rts2_cache_umd/
-
-# Optional REPL history
+# 可选的 REPL 历史
 .node_repl_history
 
-# Output of 'npm pack'
+# 输出的 npm 包
 *.tgz
 
-# Yarn Integrity file
+# Yarn 完整性文件
 .yarn-integrity
 
-# dotenv environment variable files
-.env
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
-
-# parcel-bundler cache (https://parceljs.org/)
-.cache
+# parcel-bundler 缓存
 .parcel-cache
 
-# Next.js build output
+# next.js 构建输出
 .next
-out
 
-# Nuxt.js build / generate output
+# nuxt.js 构建输出
 .nuxt
-dist
 
-# Gatsby files
-.cache/
-public
-
-# Vuepress build output
+# vuepress 构建输出
 .vuepress/dist
 
-# Vuepress v2.x temp and cache directory
-.temp
-.cache
+# Serverless 目录
+.serverless
 
-# Docusaurus cache and generated files
-.docusaurus
-
-# Serverless directories
-.serverless/
-
-# FuseBox cache
+# FuseBox 缓存
 .fusebox/
 
-# DynamoDB Local files
+# DynamoDB Local 文件
 .dynamodb/
 
-# TernJS port file
-.tern-port
-
-# Stores VSCode versions used for testing VSCode extensions
-.vscode-test
-
-# yarn v2
-.yarn/cache
-.yarn/unplugged
-.yarn/build-state.yml
-.yarn/install-state.gz
-.pnp.*
-
-# Build outputs
-build/
-dist/
-*.tgz
-*.tar.gz
-
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS generated files
+# 操作系统相关
 .DS_Store
 .DS_Store?
 ._*
@@ -138,32 +84,51 @@ dist/
 ehthumbs.db
 Thumbs.db
 
-# Logs
-logs
-*.log
+# IDE 相关
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 
-# Temporary files
-tmp/
-temp/
+# 数据库相关
+*.sqlite
+*.sqlite3
+*.db
 
-# Static file generators
-_site/
+# 数据库迁移文件（保留在版本控制中）
+# drizzle/
 
-# CSS preprocessors
-.sass-cache/
-*.css.map
-*.sass.map
-*.scss.map
+# 备份文件
+*.bak
+*.backup
 
-# Webpack
-.webpack/
+# 临时文件
+*.tmp
+*.temp
 
-# Rollup
-.rollup.cache/
+# 测试相关
+coverage/
+.nyc_output/
 
-# Storybook build outputs
-storybook-static
+# 构建工具
+.turbo
 
-# Temporary folders
-tmp/
-temp/
+# Vercel
+.vercel
+
+# Docker 相关
+.dockerignore
+
+# 本地开发文件
+.local
+
+# 压缩文件
+*.zip
+*.tar.gz
+*.rar
+
+# 证书文件（如果不是预配置的）
+# ssl/*.pem
+# ssl/*.key
+# ssl/*.crt
