@@ -14,6 +14,11 @@
           开始学习
         </CyberButton>
         <CyberButton variant="default">
+          <NuxtLink to="/wokwi-poc">
+            Wokwi 集成 PoC
+          </NuxtLink>
+        </CyberButton>
+        <CyberButton variant="default">
           <NuxtLink to="/unocss-demo">
             查看主题演示
           </NuxtLink>
