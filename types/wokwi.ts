@@ -103,9 +103,9 @@ export interface WokwiState {
 // useWokwi Composable 返回类型
 export interface UseWokwiReturn {
   // 状态
-  state: Ref<WokwiState>
-  isReady: ComputedRef<boolean>
-  
+  state: import('vue').Ref<WokwiState>
+  isReady: import('vue').ComputedRef<boolean>
+
   // 方法
   loadProject: (projectId: string) => Promise<void>
   injectCode: (code: string) => Promise<boolean>
@@ -113,7 +113,7 @@ export interface UseWokwiReturn {
   startSimulation: () => Promise<void>
   stopSimulation: () => Promise<void>
   resetSimulation: () => Promise<void>
-  
+
   // 事件监听
   onMessage: (callback: (message: WokwiMessage) => void) => void
   onStateChange: (callback: (state: WokwiState) => void) => void
