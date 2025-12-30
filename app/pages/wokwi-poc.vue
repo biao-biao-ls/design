@@ -189,7 +189,12 @@ import type {
   PocValidationResult, 
   WokwiState,
   WokwiError 
-} from '~/../../types/wokwi'
+} from '~~/types/wokwi'
+import { 
+  TEST_PROJECTS, 
+  getProjectForScenario, 
+  type TestProject 
+} from '~~/types/wokwi-test-projects'
 
 // 页面元数据
 definePageMeta({
@@ -201,7 +206,7 @@ definePageMeta({
 const wokwiRef = ref()
 const debugMode = ref(false)
 const currentScenario = ref<TestScenario>('basic-embed')
-const currentProjectId = ref('451385811510693889')
+const currentProjectId = ref(TEST_PROJECTS.BASIC_ARDUINO.id) // 使用配置文件中的项目ID
 const testResults = ref<PocValidationResult[]>([])
 const startTime = ref(Date.now())
 
@@ -270,27 +275,18 @@ const selectScenario = (scenarioId: TestScenario) => {
   console.log('选择测试场景:', scenarioId)
   currentScenario.value = scenarioId
   
-  // 根据场景切换项目
-  switch (scenarioId) {
-    case 'basic-embed':
-      currentProjectId.value = '451385811510693889'
-      break
-    case 'communication':
-      currentProjectId.value = 'esp32-serial-monitor'
-      break
-    case 'code-injection':
-      currentProjectId.value = 'arduino-led-control'
-      break
-    case 'custom-chip':
-      currentProjectId.value = 'custom-logic-analyzer'
-      break
-    case 'performance':
-      currentProjectId.value = 'complex-circuit-simulation'
-      break
-  }
+  // 根据场景切换项目（使用配置文件）
+  currentProjectId.value = getProjectForScenario(scenarioId)
   
   // 记录测试结果
-  addTestResult(scenarioId, true, `已切换到 ${getScenarioTitle(scenarioId)} 场景`)
+  const projectInfo = Object.values(TEST_PROJECTS).find(p => p.id === currentProjectId.value)
+  const projectName = projectInfo?.name || currentProjectId.value
+  
+  addTestResult(
+    scenarioId, 
+    true, 
+    `已切换到 ${getScenarioTitle(scenarioId)} 场景，加载项目: ${projectName}`
+  )
 }
 
 const toggleDebugMode = () => {

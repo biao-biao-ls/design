@@ -3,7 +3,7 @@
  * 用于 PoC 验证的辅助功能
  */
 
-import type { WokwiMessage, MessageGenerator } from '~/../../types/wokwi'
+import type { WokwiMessage, MessageGenerator } from '~~/types/wokwi'
 
 // Wokwi 项目配置常量
 export const WOKWI_PROJECTS = {
@@ -13,14 +13,14 @@ export const WOKWI_PROJECTS = {
     description: '基础的 Arduino LED 闪烁项目',
     type: 'arduino'
   },
-  'esp32-serial-monitor': {
-    id: 'esp32-serial-monitor', 
+  '451385811510693889': {
+    id: '451385811510693889', 
     name: 'ESP32 串口监视器',
     description: 'ESP32 串口通信测试项目',
     type: 'esp32'
   },
-  'arduino-led-control': {
-    id: 'arduino-led-control',
+  '451385811510693889': {
+    id: '451385811510693889',
     name: 'Arduino LED 控制',
     description: '可动态控制的 LED 项目',
     type: 'arduino'
@@ -49,7 +49,8 @@ export const WOKWI_ALLOWED_ORIGINS = [
 // 消息类型常量
 export const MESSAGE_TYPES = {
   LOAD_PROJECT: 'load-project',
-  INJECT_CODE: 'inject-code', 
+  INJECT_CODE: 'inject-code',
+  INJECT_CODE_RESPONSE: 'inject-code-response',
   SIMULATION_CONTROL: 'simulation-control',
   STATE_UPDATE: 'state-update',
   CUSTOM_CHIP_EVENT: 'custom-chip-event',
@@ -124,7 +125,10 @@ export const validateWokwiMessage = (message: any): message is WokwiMessage => {
 
   // 验证消息类型
   const validTypes = Object.values(MESSAGE_TYPES)
-  if (!validTypes.includes(message.type)) {
+  const additionalValidTypes = ['wokwi:file:updated', 'inject-code-response']
+  const allValidTypes = [...validTypes, ...additionalValidTypes]
+  
+  if (!allValidTypes.includes(message.type)) {
     return false
   }
 

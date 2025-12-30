@@ -5,7 +5,7 @@
 
 // Wokwi 消息类型定义
 export interface WokwiMessage {
-  type: 'load-project' | 'inject-code' | 'simulation-control' | 'state-update' | 'custom-chip-event' | 'wokwi-ready'
+  type: 'load-project' | 'inject-code' | 'inject-code-response' | 'simulation-control' | 'state-update' | 'custom-chip-event' | 'wokwi-ready'
   payload: {
     projectId?: string
     code?: string
@@ -13,6 +13,8 @@ export interface WokwiMessage {
     state?: SimulationState
     chipData?: CustomChipData
     fileUpdate?: WokwiFileUpdate
+    success?: boolean
+    error?: string
   }
   timestamp: number
   id: string

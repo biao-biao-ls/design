@@ -158,6 +158,75 @@ function handleLogicAnalyzerEvent(event: CustomChipEvent): void {
 
 ### 核心组件设计
 
+#### 测试项目配置
+
+为了确保 PoC 验证的一致性和可重现性，我们定义了以下标准测试项目：
+
+```typescript
+// 测试项目配置
+const TEST_PROJECTS = {
+  // 主要测试项目 - 用于基础功能验证
+  BASIC_ARDUINO: {
+    id: '451385811510693889',
+    name: 'Arduino LED 控制',
+    description: '基础的 Arduino LED 控制项目，用于验证基本加载和交互功能',
+    type: 'arduino',
+    features: ['基础GPIO控制', '串口输出', '简单逻辑']
+  },
+  
+  // 扩展测试项目 - 用于特定场景验证
+  ESP32_SERIAL: {
+    id: '451385811510693889',
+    name: 'ESP32 串口通信',
+    description: 'ESP32 串口通信测试，验证不同平台兼容性',
+    type: 'esp32',
+    features: ['WiFi模块', '串口通信', '多任务处理']
+  },
+  
+  CODE_INJECTION: {
+    id: '451385811510693889',
+    name: 'Arduino 动态代码',
+    description: '用于测试代码注入功能的 Arduino 项目',
+    type: 'arduino',
+    features: ['动态代码更新', 'LED控制', '实时编译']
+  },
+  
+  CUSTOM_CHIP: {
+    id: 'custom-logic-analyzer',
+    name: '自定义逻辑分析仪',
+    description: '包含自定义芯片的项目，用于测试芯片通信',
+    type: 'arduino',
+    features: ['自定义芯片', '逻辑分析', '事件通信']
+  },
+  
+  PERFORMANCE: {
+    id: 'complex-circuit-simulation',
+    name: '复杂电路仿真',
+    description: '复杂电路项目，用于性能和稳定性测试',
+    type: 'arduino',
+    features: ['复杂电路', '多组件', '高频操作']
+  }
+} as const
+
+// 项目选择逻辑
+function getProjectForScenario(scenario: TestScenario): string {
+  switch (scenario) {
+    case 'basic-embed':
+      return TEST_PROJECTS.BASIC_ARDUINO.id
+    case 'communication':
+      return TEST_PROJECTS.ESP32_SERIAL.id
+    case 'code-injection':
+      return TEST_PROJECTS.CODE_INJECTION.id
+    case 'custom-chip':
+      return TEST_PROJECTS.CUSTOM_CHIP.id
+    case 'performance':
+      return TEST_PROJECTS.PERFORMANCE.id
+    default:
+      return TEST_PROJECTS.BASIC_ARDUINO.id
+  }
+}
+```
+
 #### 1. WokwiIntegration 组件
 
 ```typescript

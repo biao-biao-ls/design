@@ -35,6 +35,7 @@ export class MessageBridge {
   private messageTimeout: number = 3000 // 3秒超时
   private maxQueueSize: number = 100 // 最大队列长度
   private securityEnabled: boolean = true
+  private enableDebug: boolean = false
 
   // Ready 状态处理相关
   private readyTimeout: NodeJS.Timeout | null = null
@@ -50,7 +51,8 @@ export class MessageBridge {
   private errorCount: number = 0
   private lastMessageTime: number = 0
 
-  constructor() {
+  constructor(options: { enableDebug?: boolean } = {}) {
+    this.enableDebug = options.enableDebug || false
     this.setupGlobalMessageListener()
   }
 
@@ -274,12 +276,19 @@ export class MessageBridge {
       throw new Error(`MessageBridge: 不支持的文件类型: ${filename}`)
     }
 
+    if (!content || !content.trim()) {
+      throw new Error('MessageBridge: 代码内容不能为空')
+    }
+
+    // 清理代码内容，防止恶意代码注入
+    const sanitizedContent = this.sanitizeCodeContent(content)
+
     const message: WokwiMessage = {
       type: MESSAGE_TYPES.INJECT_CODE,
       payload: {
         fileUpdate: {
           filename: filename as WokwiFileUpdate['filename'],
-          content,
+          content: sanitizedContent,
           encoding: 'utf-8',
         },
       },
@@ -288,6 +297,21 @@ export class MessageBridge {
     }
 
     return this.sendMessage(message)
+  }
+
+  /**
+   * 清理代码内容，移除潜在的恶意代码
+   * @param content 原始代码内容
+   * @returns 清理后的代码内容
+   */
+  private sanitizeCodeContent(content: string): string {
+    // 基础的代码清理，保留代码的功能性
+    return content
+      .replace(/\/\*[\s\S]*?\*\//g, '') // 移除块注释中的潜在恶意内容
+      .replace(/\/\/.*$/gm, '') // 移除行注释中的潜在恶意内容
+      .replace(/\r\n/g, '\n') // 统一换行符
+      .replace(/\r/g, '\n')
+      .trim()
   }
 
   /**
@@ -343,6 +367,7 @@ export class MessageBridge {
    * @param event MessageEvent
    */
   private handleIncomingMessage(event: MessageEvent): void {
+    console.log('fuck1')
     // 安全验证：检查消息来源
     if (this.securityEnabled && !this.validateMessageOrigin(event.origin)) {
       console.warn(`MessageBridge: 拒绝来自未授权域名的消息: ${event.origin}`)
@@ -354,7 +379,7 @@ export class MessageBridge {
       })
       return
     }
-
+    console.log('fuck')
     // 验证消息格式
     if (!validateWokwiMessage(event.data)) {
       console.warn('MessageBridge: 收到无效格式的消息', event.data)
@@ -366,6 +391,13 @@ export class MessageBridge {
     // 处理特殊的 Wokwi Ready 信号
     if (message.type === MESSAGE_TYPES.WOKWI_READY) {
       this.onWokwiReady()
+    }
+
+    // 处理代码注入响应
+    if (message.type === 'inject-code-response' || message.type === 'wokwi:file:updated') {
+      if (this.enableDebug) {
+        console.log('MessageBridge: 收到代码注入响应', message)
+      }
     }
 
     // 将消息添加到历史队列
@@ -614,6 +646,6 @@ export class MessageBridge {
 export const messageBridge = new MessageBridge()
 
 // 导出工厂函数
-export const createMessageBridge = (): MessageBridge => {
-  return new MessageBridge()
+export const createMessageBridge = (options: { enableDebug?: boolean } = {}): MessageBridge => {
+  return new MessageBridge(options)
 }

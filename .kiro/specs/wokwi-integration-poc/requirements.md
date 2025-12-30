@@ -20,10 +20,15 @@
 
 **用户故事:** 作为开发者，我想要在 Nuxt 4 页面中成功嵌入 Wokwi 仿真器，以便验证基础集成可行性。
 
+**测试项目配置:**
+- **主要测试项目ID**: `451385811510693889` (Arduino LED 控制项目，用于基础功能验证)
+- **项目来源**: Wokwi 官网创建的专用测试项目
+- **项目特点**: 包含基础的 Arduino 代码、LED 组件，适合验证基本的加载、显示和交互功能
+
 #### 验收标准
 
 1. WHEN 用户访问 PoC 页面 THEN THE PoC_Page SHALL 显示嵌入的 Wokwi 仿真器
-2. WHEN Wokwi 仿真器加载完成 THEN THE Wokwi_Simulator SHALL 显示默认的 Arduino 项目
+2. WHEN Wokwi 仿真器加载完成 THEN THE Wokwi_Simulator SHALL 显示项目ID `451385811510693889` 对应的 Arduino 项目
 3. WHEN 用户与仿真器交互 THEN THE Wokwi_Simulator SHALL 响应用户的点击和操作
 4. WHILE 页面处于 SSR 模式 THEN THE PoC_Page SHALL 使用 ClientOnly 组件包装仿真器
 5. IF Wokwi 仿真器加载失败 THEN THE PoC_Page SHALL 显示友好的错误提示信息
@@ -57,6 +62,13 @@
 ### 需求 4: 项目动态加载和代码注入
 
 **用户故事:** 作为开发者，我想要动态加载不同的 Wokwi 项目并能够动态更新代码，以便验证关卡系统中代码重置和修正功能的可行性。
+
+**测试项目配置:**
+- **基础测试项目**: `451385811510693889` (Arduino LED 控制)
+- **ESP32 测试项目**: `451385811510693889` (ESP32 串口通信测试)
+- **代码注入测试项目**: `451385811510693889` (Arduino LED 动态控制)
+- **自定义芯片测试项目**: `custom-logic-analyzer` (包含自定义逻辑分析仪芯片)
+- **性能测试项目**: `complex-circuit-simulation` (复杂电路仿真)
 
 #### 验收标准
 

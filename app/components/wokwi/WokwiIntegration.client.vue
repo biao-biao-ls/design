@@ -74,11 +74,12 @@
 </template>
 
 <script setup lang="ts">
-import type { WokwiIntegrationProps, WokwiState, WokwiError } from '~/../../types/wokwi'
+import type { WokwiIntegrationProps, WokwiState, WokwiError } from '~~/types/wokwi'
+import { TEST_PROJECTS } from '~~/types/wokwi-test-projects'
 
 // Props 定义
 const props = withDefaults(defineProps<WokwiIntegrationProps>(), {
-  projectId: '451385811510693889',
+  projectId: TEST_PROJECTS.BASIC_ARDUINO.id, // 使用配置文件中的默认项目
   initialCode: '',
   enableDebug: false,
   testMode: 'basic'
